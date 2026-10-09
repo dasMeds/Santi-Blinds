@@ -1,0 +1,1 @@
+Drop your image files here (see SETUP.md for the list).
