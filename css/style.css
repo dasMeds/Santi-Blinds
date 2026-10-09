@@ -4030,6 +4030,7 @@ ul { list-style: none; }
   overflow-y: auto;
   position: relative;
 }
+.admin-body select option { color: #222021; background-color: #fff; }
 .admin-modal__panel h3 {
   font-family: var(--font-display);
   color: var(--c-white);
@@ -4185,6 +4186,18 @@ ul { list-style: none; }
 .order-switch { margin-top: 1.5rem; font-size: 0.88rem; }
 .order-link { color: var(--c-tan); text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
 .order .form-group select { background-image: none; }
+.order .form-group select option { color: #222021; background-color: #fff; }
+.order .form-group select:focus-visible { outline: 2px solid var(--c-cream); outline-offset: 2px; }
+.order .btn--primary:disabled {
+  background: #b8b7ad;
+  border: 1px solid #b8b7ad;
+  color: #222021;
+  cursor: not-allowed;
+  opacity: 1;
+  transform: none;
+  box-shadow: none;
+}
+.order .btn--primary:disabled::after { display: none; }
 
 /* customizer */
 .order-customize { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: start; margin-top: 2rem; }
