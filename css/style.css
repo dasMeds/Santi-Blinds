@@ -4186,6 +4186,8 @@ ul { list-style: none; }
 .order-switch { margin-top: 1.5rem; font-size: 0.88rem; }
 .order-link { color: var(--c-tan); text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
 .order .form-group select { background-image: none; }
+.order #cMaterial { background-color: var(--c-navy); }
+.order #cMaterial:focus { background-color: #3d4047; }
 .order .form-group select option { color: #222021; background-color: #fff; }
 .order .form-group select:focus-visible { outline: 2px solid var(--c-cream); outline-offset: 2px; }
 .order .btn--primary:disabled {
