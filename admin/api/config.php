@@ -64,6 +64,19 @@ function requireLogin(): void {
     }
 }
 
+function recordAudit(string $action, string $details = ''): void {
+    $stmt = getDB()->prepare(
+        "INSERT INTO admin_audit_log (owner_id, admin_name, action, details)
+         VALUES (:owner_id, :admin_name, :action, :details)"
+    );
+    $stmt->execute([
+        ':owner_id' => $_SESSION['owner_id'] ?? null,
+        ':admin_name' => $_SESSION['owner_name'] ?? 'Admin',
+        ':action' => $action,
+        ':details' => $details,
+    ]);
+}
+
 function requestBody(): array {
     $json = json_decode(file_get_contents('php://input'), true);
     return is_array($json) ? $json : $_POST;

@@ -20,5 +20,6 @@ if (!$user || !password_verify($password, $user['password_hash'])) {
 session_regenerate_id(true);
 $_SESSION['owner_id']   = (int)$user['owner_id'];
 $_SESSION['owner_name'] = $user['full_name'];
+recordAudit('Admin login', 'Signed in to the admin panel.');
 
 echo json_encode(['success' => true, 'name' => $user['full_name']]);

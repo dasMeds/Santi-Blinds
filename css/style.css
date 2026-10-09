@@ -4078,6 +4078,21 @@ ul { list-style: none; }
   text-align: center;
 }
 
+.admin-products-layout {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+}
+.admin-products-layout .form-row { gap: 1rem; }
+.admin-form-message {
+  min-height: 1.2em;
+  color: var(--c-tan);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+.admin-quote-row { cursor: pointer; }
+.admin-quote-row:focus { outline: 1px solid var(--c-tan); outline-offset: -1px; }
+#auditTable td:last-child { white-space: normal; min-width: 220px; }
+
 @media (max-width: 900px) {
   .admin-shell { flex-direction: column; }
   .admin-sidebar {
@@ -4108,6 +4123,9 @@ ul { list-style: none; }
     margin-left: auto;
   }
   .admin-modal__grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 1100px) {
+  .admin-products-layout { grid-template-columns: 1fr; }
 }
 
 /* ============================================

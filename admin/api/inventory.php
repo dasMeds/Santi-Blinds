@@ -22,8 +22,24 @@ if ($method === 'POST') {
     $qty  = $body['stock_qty'] ?? null;
     if (!$id || !is_numeric($qty) || $qty < 0) fail(422, 'A valid product id and stock quantity are required.');
 
-    $stmt = $pdo->prepare("UPDATE product SET stock_qty = :q WHERE product_id = :id");
-    $stmt->execute([':q' => (int)$qty, ':id' => $id]);
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("UPDATE product SET stock_qty = :q WHERE product_id = :id");
+        $stmt->execute([':q' => (int)$qty, ':id' => $id]);
+        if (!$stmt->rowCount()) {
+            $exists = $pdo->prepare("SELECT 1 FROM product WHERE product_id = :id");
+            $exists->execute([':id' => $id]);
+            if (!$exists->fetchColumn()) {
+                $pdo->rollBack();
+                fail(404, 'Product not found.');
+            }
+        }
+        recordAudit('Stock updated', sprintf('Product #%d stock set to %d.', $id, (int)$qty));
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
     echo json_encode(['success' => true]);
     exit;
 }

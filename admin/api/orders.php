@@ -137,6 +137,7 @@ if ($method === 'POST') {
         } else {
             $pdo->prepare("DELETE FROM sale WHERE order_id = :id")->execute([':id' => $id]);
         }
+        recordAudit('Order updated', sprintf('Order #%d status set to %s.', $id, $status));
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();

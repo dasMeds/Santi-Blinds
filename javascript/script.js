@@ -1087,6 +1087,203 @@
     loadInventory();
   }
 
+  // ---------- admin-products.html ----------
+  const productForm = document.getElementById('productForm');
+  if (productForm) {
+    const productBody = document.querySelector('#productsTable tbody');
+    const categorySelect = document.getElementById('productCategory');
+    const message = document.getElementById('productFormMessage');
+    const submitButton = document.getElementById('addProductBtn');
+
+    async function loadProducts() {
+      try {
+        const data = await adminApiGet('products.php');
+        if (!data) return;
+        if (!data.success) {
+          productBody.innerHTML = emptyRow(5, data.message || 'Could not load products.');
+          categorySelect.innerHTML = '<option value="">Could not load categories</option>';
+          return;
+        }
+        categorySelect.innerHTML = '<option value="">Choose a category</option>' + data.categories.map(c =>
+          `<option value="${c.category_id}">${esc(c.name)}</option>`
+        ).join('');
+        productBody.innerHTML = data.products.length ? data.products.map(p => `
+          <tr><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.blind_type)}</td>
+          <td>${money(p.base_price)}</td><td>${Number(p.stock_qty)}</td></tr>
+        `).join('') : emptyRow(5, 'No products yet.');
+      } catch (error) {
+        productBody.innerHTML = emptyRow(5, error.message || 'Could not load products.');
+        categorySelect.innerHTML = '<option value="">Could not load categories</option>';
+      }
+    }
+
+    productForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      message.textContent = '';
+      submitButton.disabled = true;
+      const form = new FormData(productForm);
+      const body = Object.fromEntries(form.entries());
+      body.category_id = Number(body.category_id);
+      body.base_price = Number(body.base_price);
+      body.stock_qty = Number(body.stock_qty);
+
+      try {
+        const result = await adminApiPost('products.php', body);
+        if (result && result.success) {
+          productForm.reset();
+          document.getElementById('productStock').value = '0';
+          message.textContent = 'Product added to the catalog.';
+          await loadProducts();
+        } else {
+          message.textContent = (result && result.message) || 'Could not add the product.';
+        }
+      } catch (error) {
+        message.textContent = error.message || 'Could not add the product.';
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    loadProducts();
+  }
+
+  // ---------- admin-quotations.html ----------
+  const quotationsTable = document.getElementById('quotationsTable');
+  if (quotationsTable) {
+    const tbody = quotationsTable.querySelector('tbody');
+    const statusClasses = { Active: 'admin-badge--processing', Ordered: 'admin-badge--completed', Expired: 'admin-badge--cancelled' };
+
+    async function loadQuotations() {
+      try {
+        const search = document.getElementById('quotationSearch').value.trim();
+        const status = document.getElementById('quotationStatusFilter').value;
+        const data = await adminApiGet('quotations.php', { search, status });
+        if (!data) return;
+        if (!data.success) { tbody.innerHTML = emptyRow(8, data.message || 'Could not load quotations.'); return; }
+        tbody.innerHTML = data.quotations.length ? data.quotations.map(q => `
+          <tr class="admin-quote-row" data-quote="${q.quotation_id}" tabindex="0" aria-expanded="false">
+            <td>${esc(q.reference)}</td><td>${esc(q.customer)}<br><small>${esc(q.email)}</small></td>
+            <td>${Number(q.item_count)}</td><td>${money(q.total_amount)}</td>
+            <td>${fmtDate(q.created_at)}</td><td>${fmtDate(q.valid_until)}</td>
+            <td><span class="admin-badge ${statusClasses[q.status] || ''}">${esc(q.status)}</span></td>
+            <td>${q.order_id ? `#${q.order_id} ${q.order_status ? badge(q.order_status) : ''}` : '—'}</td>
+          </tr>
+          <tr class="admin-quote-detail" data-detail="${q.quotation_id}" hidden>
+            <td colspan="8">
+              <div class="admin-table-wrap">
+                <table class="admin-table">
+                  <thead><tr><th>Product</th><th>Material</th><th>Colour</th><th>Size (cm)</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+                  <tbody>${q.items.map(item => `
+                    <tr><td>${esc(item.product)}<br><small>${esc(item.blind_type)}</small></td>
+                    <td>${esc(item.material)}</td><td>${esc(item.color)}</td>
+                    <td>${Number(item.width_cm)} × ${Number(item.height_cm)}</td>
+                    <td>${Number(item.quantity)}</td><td>${money(item.unit_price)}</td><td>${money(item.total_amount)}</td></tr>
+                  `).join('') || emptyRow(7, 'No quotation items.')}</tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        `).join('') : emptyRow(8, 'No quotations found.');
+      } catch (error) {
+        tbody.innerHTML = emptyRow(8, error.message || 'Could not load quotations.');
+      }
+    }
+
+    tbody.addEventListener('click', (event) => {
+      const row = event.target.closest('.admin-quote-row');
+      if (!row) return;
+      const detail = tbody.querySelector(`[data-detail="${row.dataset.quote}"]`);
+      if (detail) {
+        detail.hidden = !detail.hidden;
+        row.setAttribute('aria-expanded', String(!detail.hidden));
+      }
+    });
+    tbody.addEventListener('keydown', (event) => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.admin-quote-row')) {
+        event.preventDefault();
+        event.target.click();
+      }
+    });
+    document.getElementById('quotationSearch').addEventListener('input', debounce(loadQuotations, 250));
+    document.getElementById('quotationStatusFilter').addEventListener('change', loadQuotations);
+    loadQuotations();
+  }
+
+  // ---------- admin-reports.html ----------
+  const reportTable = document.getElementById('reportTable');
+  if (reportTable) {
+    const tbody = reportTable.querySelector('tbody');
+    const fromInput = document.getElementById('reportFrom');
+    const toInput = document.getElementById('reportTo');
+    const today = new Date();
+    const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    fromInput.value = toIso(new Date(today.getFullYear(), today.getMonth(), 1));
+    toInput.value = toIso(today);
+    let reportRows = [];
+
+    async function loadReport() {
+      try {
+        const data = await adminApiGet('reports.php', { from: fromInput.value, to: toInput.value });
+        if (!data) return;
+        if (!data.success) {
+          document.getElementById('reportStats').textContent = data.message || 'Could not load report.';
+          tbody.innerHTML = emptyRow(8, data.message || 'Could not load report.');
+          return;
+        }
+        reportRows = data.orders;
+        document.getElementById('reportStats').innerHTML = `
+          ${statCard('Orders in Range', data.stats.orders)}
+          ${statCard('Completed', data.stats.completed_orders)}
+          ${statCard('Pending', data.stats.pending_orders)}
+          ${statCard('Paid Revenue', money(data.stats.revenue))}
+        `;
+        tbody.innerHTML = reportRows.length ? reportRows.map(order => `
+          <tr><td>#${order.order_id}</td><td>${esc(order.full_name)}</td><td>${esc(order.address || '—')}</td>
+          <td>${esc(order.products)}</td><td>${Number(order.quantity)}</td><td>${money(order.amount)}</td>
+          <td>${badge(order.status)}</td><td>${fmtDate(order.order_date)}</td></tr>
+        `).join('') : emptyRow(8, 'No orders in this date range.');
+      } catch (error) {
+        document.getElementById('reportStats').textContent = error.message || 'Could not load report.';
+        tbody.innerHTML = emptyRow(8, error.message || 'Could not load report.');
+      }
+    }
+
+    document.getElementById('runReportBtn').addEventListener('click', loadReport);
+    document.getElementById('exportReportBtn').addEventListener('click', () => {
+      const columns = ['Order ID', 'Customer', 'Location', 'Products', 'Quantity', 'Amount', 'Status', 'Order Date'];
+      const cell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const csv = [columns, ...reportRows.map(order => [
+        order.order_id, order.full_name, order.address || '', order.products, order.quantity,
+        Number(order.amount).toFixed(2), order.status, order.order_date,
+      ])].map(row => row.map(cell).join(',')).join('\r\n');
+      const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `santi-blinds-orders-${fromInput.value}-to-${toInput.value}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+    loadReport();
+  }
+
+  // ---------- admin-audit.html ----------
+  const auditTable = document.getElementById('auditTable');
+  if (auditTable) {
+    (async () => {
+      const tbody = auditTable.querySelector('tbody');
+      try {
+        const data = await adminApiGet('audit.php');
+        if (!data) return;
+        tbody.innerHTML = data.success && data.logs.length ? data.logs.map(log => `
+          <tr><td>${fmtDate(log.created_at)}<br><small>${esc(log.created_at)}</small></td>
+          <td>${esc(log.admin_name)}</td><td>${esc(log.action)}</td><td>${esc(log.details || '')}</td></tr>
+        `).join('') : emptyRow(4, data.message || 'No admin actions have been recorded yet.');
+      } catch (error) {
+        tbody.innerHTML = emptyRow(4, error.message || 'Could not load the audit log.');
+      }
+    })();
+  }
+
   // ---------- admin-sales.html (sale table) ----------
   const salesStats = document.getElementById('salesStats');
   if (salesStats) {
