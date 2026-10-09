@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 //  Santi Blinds — Admin API: orders
-//  GET  ?search=&status=   -> list of orders (one row per order_id)
+//  GET  ?search=&status=&from=&to=&payment_method= -> filtered order list
 //  GET  ?id=12             -> one order with its items + sale
 //  POST {id,status,payment_method} -> update status; a Completed
 //        order is recorded in `sale`, any other status removes it.
@@ -22,7 +22,9 @@ if ($method === 'GET') {
 
         $h = $pdo->prepare(
             "SELECT o.order_id, c.full_name, c.phone, c.email, c.address,
-                    MAX(o.status) AS status, MIN(o.order_date) AS order_date,
+                    CASE WHEN MAX(o.status) = 'Ready' THEN 'Ready for Install'
+                         ELSE MAX(o.status) END AS status,
+                    MIN(o.order_date) AS order_date,
                     SUM(o.total_amount) AS amount, MAX(o.quotation_id) AS quotation_id
              FROM orders o JOIN customer c ON c.customer_id = o.customer_id
              WHERE o.order_id = :id
@@ -61,34 +63,89 @@ if ($method === 'GET') {
 
     // ---- list ----
     $where = []; $params = [];
-    if (!empty($_GET['status'])) {
-        $where[] = "o.status = :st";
-        $params[':st'] = $_GET['status'];
+    $statusFilter = (string)($_GET['status'] ?? '');
+    if ($statusFilter !== '') {
+        if (!in_array($statusFilter, ORDER_STATUSES, true)) fail(422, 'Invalid order status filter.');
+        if ($statusFilter === 'Ready for Install') {
+            $where[] = "o.status IN ('Ready', 'Ready for Install')";
+        } else {
+            $where[] = 'o.status = :st';
+            $params[':st'] = $statusFilter;
+        }
+    }
+    $from = trim((string)($_GET['from'] ?? ''));
+    $to = trim((string)($_GET['to'] ?? ''));
+    $isDate = static function (string $value): bool {
+        if ($value === '') return true;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) return false;
+        $date = DateTime::createFromFormat('!Y-m-d', $value);
+        return $date !== false && $date->format('Y-m-d') === $value;
+    };
+    if (!$isDate($from) || !$isDate($to)) fail(422, 'Dates must use YYYY-MM-DD format.');
+    if ($from !== '' && $to !== '' && $from > $to) fail(422, 'The start date must be on or before the end date.');
+    if ($from !== '') {
+        $where[] = 'o.order_date >= :from_date';
+        $params[':from_date'] = $from . ' 00:00:00';
+    }
+    if ($to !== '') {
+        $where[] = 'o.order_date < DATE_ADD(:to_date, INTERVAL 1 DAY)';
+        $params[':to_date'] = $to;
+    }
+    $paymentFilter = (string)($_GET['payment_method'] ?? '');
+    if ($paymentFilter !== '') {
+        if (!in_array($paymentFilter, PAYMENT_METHODS, true)) fail(422, 'Invalid payment method filter.');
+        $where[] = 's.payment_method = :payment_method';
+        $params[':payment_method'] = $paymentFilter;
     }
     if (!empty($_GET['search'])) {
-        $where[] = "(c.full_name LIKE :s1 OR p.name LIKE :s2)";
-        $like = '%' . $_GET['search'] . '%';
-        $params[':s1'] = $like; $params[':s2'] = $like;
+        $where[] = '(c.full_name LIKE :s1 OR p.name LIKE :s2 OR CAST(o.order_id AS CHAR) LIKE :s3)';
+        $like = '%' . trim((string)$_GET['search']) . '%';
+        $params[':s1'] = $like; $params[':s2'] = $like; $params[':s3'] = $like;
     }
-    $sql = "SELECT o.order_id, c.full_name, MAX(o.status) AS status,
+    $sql = "SELECT o.order_id, c.full_name,
+                   CASE WHEN MAX(o.status) = 'Ready' THEN 'Ready for Install'
+                        ELSE MAX(o.status) END AS status,
                    SUM(o.quantity) AS quantity, SUM(o.total_amount) AS amount,
                    MIN(o.order_date) AS order_date, MAX(o.quotation_id) AS quotation_id,
-                   GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products
+                   GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products,
+                   MAX(s.payment_method) AS payment_method
             FROM orders o
             JOIN customer c ON c.customer_id = o.customer_id
-            JOIN product  p ON p.product_id  = o.product_id";
+            JOIN product  p ON p.product_id  = o.product_id
+            LEFT JOIN sale s ON s.order_id = o.order_id";
     if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
     $sql .= " GROUP BY o.order_id, c.full_name ORDER BY order_date DESC, o.order_id DESC";
 
+    $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT);
+    $perPage = filter_var($_GET['per_page'] ?? 25, FILTER_VALIDATE_INT);
+    if ($page === false || $page < 1 || $perPage === false || !in_array($perPage, [25, 50, 100, 200], true)) {
+        fail(422, 'Invalid pagination values.');
+    }
+    $countSql = "SELECT COUNT(DISTINCT o.order_id)
+                 FROM orders o
+                 JOIN customer c ON c.customer_id = o.customer_id
+                 JOIN product p ON p.product_id = o.product_id
+                 LEFT JOIN sale s ON s.order_id = o.order_id";
+    if ($where) $countSql .= ' WHERE ' . implode(' AND ', $where);
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+    $pages = max(1, (int)ceil($total / $perPage));
+    $page = min($page, $pages);
+    $offset = ($page - 1) * $perPage;
+    $sql .= " LIMIT $perPage OFFSET $offset";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $rows = array_map(function ($r) {
         // NULL quotation_id = a direct order placed from the design.
+        if ($r['status'] === 'Ready') $r['status'] = 'Ready for Install';
         $r['quotation_ref'] = $r['quotation_id'] ? sprintf('QT-%05d', (int)$r['quotation_id']) : null;
         unset($r['quotation_id']);
         return $r;
     }, $stmt->fetchAll());
-    echo json_encode(['success' => true, 'orders' => $rows]);
+    echo json_encode(['success' => true, 'orders' => $rows, 'pagination' => [
+        'page' => $page, 'per_page' => $perPage, 'total' => $total, 'pages' => $pages,
+    ]]);
     exit;
 }
 
@@ -109,22 +166,7 @@ if ($method === 'POST') {
         $row = $t->fetch();
         if ((int)$row['n'] === 0) { $pdo->rollBack(); fail(404, 'Order not found.'); }
 
-        // Cancelling gives the stock back; un-cancelling takes it again.
-        $o = $pdo->prepare("SELECT MAX(status) FROM orders WHERE order_id = :id");
-        $o->execute([':id' => $id]);
-        $oldStatus = (string)$o->fetchColumn();
-
-        if ($oldStatus !== $status && ($oldStatus === 'Cancelled' || $status === 'Cancelled')) {
-            $lines = $pdo->prepare("SELECT product_id, SUM(quantity) AS qty FROM orders WHERE order_id = :id GROUP BY product_id ORDER BY product_id");
-            $lines->execute([':id' => $id]);
-            $adj = $pdo->prepare($status === 'Cancelled'
-                ? "UPDATE product SET stock_qty = stock_qty + :q WHERE product_id = :p"
-                : "UPDATE product SET stock_qty = GREATEST(0, stock_qty - :q) WHERE product_id = :p");
-            foreach ($lines->fetchAll() as $ln) {
-                $adj->execute([':q' => (int)$ln['qty'], ':p' => (int)$ln['product_id']]);
-            }
-        }
-
+        // Inventory triggers reconcile stock for each order line on status changes.
         $pdo->prepare("UPDATE orders SET status = :s WHERE order_id = :id")
             ->execute([':s' => $status, ':id' => $id]);
 
@@ -139,6 +181,12 @@ if ($method === 'POST') {
         }
         recordAudit('Order updated', sprintf('Order #%d status set to %s.', $id, $status));
         $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if (($e->errorInfo[0] ?? $e->getCode()) === '45000') {
+            fail(409, 'Insufficient inventory to reactivate this order.');
+        }
+        throw $e;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;

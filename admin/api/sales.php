@@ -4,10 +4,19 @@ requireLogin();
 $pdo = getDB();
 
 $byMonth = $pdo->query(
-    "SELECT DATE_FORMAT(sale_date, '%Y-%m') AS month,
-            COALESCE(SUM(amount_paid),0) AS revenue, COUNT(*) AS orders
-     FROM sale
-     WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+    "SELECT DATE_FORMAT(COALESCE(completed_orders.sale_date, completed_orders.order_date), '%Y-%m') AS month,
+            COALESCE(SUM(completed_orders.revenue),0) AS revenue, COUNT(*) AS orders
+     FROM (
+         SELECT o.order_id, MIN(o.order_date) AS order_date,
+                SUM(o.total_amount) AS order_amount,
+                COALESCE(MAX(s.amount_paid), SUM(o.total_amount)) AS revenue,
+                MAX(s.sale_date) AS sale_date
+         FROM orders o
+         LEFT JOIN sale s ON s.order_id = o.order_id
+         GROUP BY o.order_id
+         HAVING MAX(o.status) = 'Completed'
+     ) AS completed_orders
+     WHERE COALESCE(completed_orders.sale_date, completed_orders.order_date) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
      GROUP BY month ORDER BY month ASC"
 )->fetchAll();
 
@@ -20,7 +29,20 @@ $byProduct = $pdo->query(
      GROUP BY p.product_id, p.name ORDER BY revenue DESC"
 )->fetchAll();
 
-$totals = $pdo->query("SELECT COALESCE(SUM(amount_paid),0) AS t, COALESCE(AVG(amount_paid),0) AS a, COUNT(*) AS n FROM sale")->fetch();
+$totals = $pdo->query(
+    "SELECT COALESCE(SUM(completed_orders.revenue),0) AS t,
+            COALESCE(AVG(completed_orders.revenue),0) AS a,
+            COUNT(*) AS n
+     FROM (
+         SELECT o.order_id,
+                SUM(o.total_amount) AS order_amount,
+                COALESCE(MAX(s.amount_paid), SUM(o.total_amount)) AS revenue
+         FROM orders o
+         LEFT JOIN sale s ON s.order_id = o.order_id
+         GROUP BY o.order_id
+         HAVING MAX(o.status) = 'Completed'
+     ) AS completed_orders"
+)->fetch();
 
 echo json_encode([
     'success'         => true,

@@ -38,10 +38,12 @@
     <main class="admin-main">
       <div class="admin-view__header">
         <h1 class="section-title">Quotations</h1>
-        <p class="section-desc">Review customer quotations, line items, validity, and linked orders.</p>
+        <p class="section-desc">Review quotations and change a status; customization rows inherit the quotation status.</p>
       </div>
       <div class="admin-toolbar">
         <input type="search" id="quotationSearch" placeholder="Search customer or reference…" />
+        <input type="date" id="quotationFrom" aria-label="Quotations from date" />
+        <input type="date" id="quotationTo" aria-label="Quotations through date" />
         <select id="quotationStatusFilter">
           <option value="">All statuses</option><option>Active</option><option>Ordered</option><option>Expired</option>
         </select>
@@ -52,6 +54,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div class="admin-pagination" id="quotationsPagination"></div>
     </main>
   </div>
   <script src="../javascript/script.js"></script>

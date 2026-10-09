@@ -44,12 +44,21 @@
         <h1 class="section-title">Audit Log</h1>
         <p class="section-desc">Sign-ins and changes to orders, product stock, and the catalog.</p>
       </div>
+      <div class="admin-toolbar">
+        <input type="search" id="auditSearch" placeholder="Search admin, action, or details…" />
+        <input type="date" id="auditFrom" aria-label="Audit entries from date" />
+        <input type="date" id="auditTo" aria-label="Audit entries through date" />
+        <select id="auditActionFilter" aria-label="Filter by audit action">
+          <option value="">All actions</option>
+        </select>
+      </div>
       <div class="admin-table-wrap">
         <table class="admin-table" id="auditTable">
           <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div class="admin-pagination" id="auditPagination"></div>
     </main>
   </div>
 

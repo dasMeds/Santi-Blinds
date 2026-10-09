@@ -7,11 +7,23 @@ $totalOrders    = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders"
 $pendingOrders  = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders WHERE status = 'Pending'")->fetchColumn();
 $totalCustomers = (int)$pdo->query("SELECT COUNT(*) FROM customer")->fetchColumn();
 
-$revenueThisMonth = (float)$pdo->query(
-    "SELECT COALESCE(SUM(amount_paid),0) FROM sale
-     WHERE MONTH(sale_date) = MONTH(CURDATE()) AND YEAR(sale_date) = YEAR(CURDATE())"
-)->fetchColumn();
-$revenueTotal = (float)$pdo->query("SELECT COALESCE(SUM(amount_paid),0) FROM sale")->fetchColumn();
+$revenueStats = $pdo->query(
+    "SELECT COALESCE(SUM(completed_orders.revenue),0) AS total_revenue,
+            COALESCE(SUM(CASE
+                WHEN YEAR(completed_orders.revenue_date) = YEAR(CURDATE())
+                 AND MONTH(completed_orders.revenue_date) = MONTH(CURDATE())
+                THEN completed_orders.revenue ELSE 0 END),0) AS revenue_this_month
+     FROM (
+         SELECT o.order_id, COALESCE(MAX(s.sale_date), MIN(o.order_date)) AS revenue_date,
+                COALESCE(MAX(s.amount_paid), SUM(o.total_amount)) AS revenue
+         FROM orders o
+         LEFT JOIN sale s ON s.order_id = o.order_id
+         GROUP BY o.order_id
+         HAVING MAX(o.status) = 'Completed'
+     ) AS completed_orders"
+)->fetch();
+$revenueTotal = (float)$revenueStats['total_revenue'];
+$revenueThisMonth = (float)$revenueStats['revenue_this_month'];
 
 $low = $pdo->prepare("SELECT COUNT(*) FROM product WHERE stock_qty <= :lvl");
 $low->execute([':lvl' => LOW_STOCK_LEVEL]);

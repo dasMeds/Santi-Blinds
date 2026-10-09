@@ -42,18 +42,22 @@
     <main class="admin-main">
       <div class="admin-view__header">
         <h1 class="section-title">Customizations</h1>
-        <p class="section-desc">Blinds designed by customers on the Order page.</p>
+        <p class="section-desc">Review quotation items and change the shared quotation status.</p>
       </div>
       <div class="admin-toolbar">
         <input type="text" id="czSearch" placeholder="Search customer or blind type…" />
-        <select id="czStatusFilter"><option value="">All statuses</option><option>Saved</option><option>Quoted</option><option>Ordered</option></select>
+        <input type="date" id="czFrom" aria-label="Customizations from date" />
+        <input type="date" id="czTo" aria-label="Customizations through date" />
+        <select id="czTypeFilter"><option value="">All blind types</option></select>
+        <select id="czStatusFilter"><option value="">All statuses</option><option>Active</option><option>Ordered</option><option>Expired</option></select>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table" id="customizationsTable">
-          <thead><tr><th>ID</th><th>Customer</th><th>Blind</th><th>Size (cm)</th><th>Qty</th><th>Estimate</th><th>Status</th><th>Date</th><th></th></tr></thead>
+          <thead><tr><th>Quotation</th><th>Customer</th><th>Blind</th><th>Size (cm)</th><th>Qty</th><th>Estimate</th><th>Status</th><th>Date</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
+      <div class="admin-pagination" id="customizationsPagination"></div>
     </main>
   </div>
 
@@ -63,21 +67,15 @@
       <h3>Customization #<span id="czId"></span></h3>
       <div class="admin-modal__grid">
         <div><span class="admin-modal__label">Customer</span><p id="czCustomer"></p></div>
-        <div><span class="admin-modal__label">Contact</span><p id="czContact"></p></div>
+        <div><span class="admin-modal__label">Email</span><p id="czContact"></p></div>
         <div><span class="admin-modal__label">Blind Type</span><p id="czType"></p></div>
-        <div><span class="admin-modal__label">Room</span><p id="czRoom"></p></div>
         <div><span class="admin-modal__label">Size (W × H)</span><p id="czSize"></p></div>
         <div><span class="admin-modal__label">Quantity</span><p id="czQty"></p></div>
         <div><span class="admin-modal__label">Material</span><p id="czMaterial"></p></div>
         <div><span class="admin-modal__label">Colour</span><p id="czColor"></p></div>
-        <div><span class="admin-modal__label">Mounting</span><p id="czMount"></p></div>
-        <div><span class="admin-modal__label">Control</span><p id="czControl"></p></div>
         <div><span class="admin-modal__label">Estimate (total)</span><p id="czTotal"></p></div>
         <div><span class="admin-modal__label">Status</span><p id="czStatus"></p></div>
-      </div>
-      <div>
-        <span class="admin-modal__label">Customer Notes</span>
-        <p id="czNotes" class="admin-modal__specs"></p>
+        <div><span class="admin-modal__label">Date</span><p id="czDate"></p></div>
       </div>
     </div>
   </div>

@@ -87,3 +87,45 @@ function fail(int $code, string $msg): void {
     echo json_encode(['success' => false, 'message' => $msg]);
     exit;
 }
+
+function updateQuotationStatus(PDO $pdo, int $quotationId, string $status): ?string {
+    $pdo->beginTransaction();
+    try {
+        $quoteStmt = $pdo->prepare('SELECT status, valid_until FROM quotation WHERE quotation_id = :id FOR UPDATE');
+        $quoteStmt->execute([':id' => $quotationId]);
+        $quote = $quoteStmt->fetch();
+        if (!$quote) {
+            $pdo->rollBack();
+            return 'Quotation not found.';
+        }
+
+        if ($status === 'Active') {
+            $pdo->prepare(
+                "UPDATE quotation
+                 SET status = 'Active',
+                     valid_until = CASE WHEN valid_until < NOW()
+                                        THEN DATE_ADD(NOW(), INTERVAL 7 DAY)
+                                        ELSE valid_until END
+                 WHERE quotation_id = :id"
+            )->execute([':id' => $quotationId]);
+        } elseif ($status === 'Expired') {
+            $pdo->prepare(
+                "UPDATE quotation SET status = 'Active', valid_until = DATE_SUB(NOW(), INTERVAL 1 SECOND)
+                 WHERE quotation_id = :id"
+            )->execute([':id' => $quotationId]);
+        } else {
+            $pdo->prepare("UPDATE quotation SET status = 'Ordered' WHERE quotation_id = :id")
+                ->execute([':id' => $quotationId]);
+        }
+
+        recordAudit(
+            'Quotation updated',
+            sprintf('Quotation #%d status set to %s.', $quotationId, $status)
+        );
+        $pdo->commit();
+        return null;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}

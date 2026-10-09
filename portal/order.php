@@ -1,7 +1,7 @@
 <?php
 // POST { quotation_id, address }   -> order from one of the customer's own Active quotations
 // POST { items: [...], address }   -> order placed directly from the design (no quotation)
-// Either way the prices are checked/computed on the server and stock is reduced in one transaction.
+// Either way the prices are checked/computed on the server and stock is reserved in one transaction.
 require_once __DIR__ . '/config.php';
 requireMethod('POST');
 $customerId = requireCustomer();
@@ -33,6 +33,9 @@ try {
         // 0) Lock the quotation so it can only ever be turned into one order.
         $q = loadQuotation($pdo, $qid, $customerId, true);
         if (!$q) { $pdo->rollBack(); respond(['success' => false, 'message' => 'Quotation not found.'], 404); }
+        $existingOrder = $pdo->prepare('SELECT 1 FROM orders WHERE quotation_id = :id LIMIT 1');
+        $existingOrder->execute([':id' => $qid]);
+        if ($existingOrder->fetchColumn()) { $pdo->rollBack(); respond(['success' => false, 'message' => 'An order has already been placed from this quotation.'], 409); }
         if ($q['status'] === 'Ordered') { $pdo->rollBack(); respond(['success' => false, 'message' => 'An order has already been placed from this quotation.'], 409); }
         if ($q['status'] === 'Expired') { $pdo->rollBack(); respond(['success' => false, 'message' => 'This quotation has expired. Please design your blinds again to get a new one.'], 409); }
 
@@ -47,35 +50,22 @@ try {
         $quoteRef    = null;
     }
 
-    // Total quantity needed per product (the same product may appear in several items).
-    $need = [];
-    foreach ($lines as $r) {
-        $need[$r['product_id']] = ($need[$r['product_id']] ?? 0) + $r['quantity'];
-    }
-    ksort($need); // fixed order avoids deadlocks between simultaneous orders
+    // Keep product-lock acquisition ordered to reduce deadlocks across concurrent orders.
+    usort($lines, function ($a, $b) {
+        return (int)$a['product_id'] <=> (int)$b['product_id'];
+    });
 
-    // 1) Take the stock. The "stock_qty >= :need" guard makes it impossible to go negative.
-    $take = $pdo->prepare("UPDATE product SET stock_qty = stock_qty - :q WHERE product_id = :p AND stock_qty >= :need");
-    foreach ($need as $pid => $qty) {
-        $take->execute([':q' => $qty, ':p' => $pid, ':need' => $qty]);
-        if ($take->rowCount() === 0) {
-            $pdo->rollBack();
-            $info = $pdo->prepare("SELECT name, stock_qty FROM product WHERE product_id = :p");
-            $info->execute([':p' => $pid]);
-            $p    = $info->fetch();
-            $name = $p ? $p['name'] : 'This product';
-            $left = $p ? max(0, (int)$p['stock_qty']) : 0;
-            respond(['success' => false, 'message' => $left > 0
-                ? "Sorry, only {$left} of {$name} left in stock. Please lower the quantity."
-                : "Sorry, {$name} is out of stock right now."], 409);
-        }
+    $stockErrors = lockAvailableInventory($pdo, $lines);
+    if ($stockErrors) {
+        $pdo->rollBack();
+        respond(['success' => false, 'errors' => $stockErrors], 409);
     }
 
-    // 2) Keep the delivery address on the customer record.
+    // 1) Keep the delivery address on the customer record.
     $pdo->prepare("UPDATE customer SET address = :a WHERE customer_id = :c")
         ->execute([':a' => $address, ':c' => $customerId]);
 
-    // 3) Save the order. Items of one order share an order_id.
+    // 2) Save the order. The database trigger reserves stock for each line.
     $orderId = (int)$pdo->query("SELECT COALESCE(MAX(order_id), 0) + 1 FROM orders FOR UPDATE")->fetchColumn();
 
     $ins = $pdo->prepare(
@@ -90,12 +80,18 @@ try {
                        ':u' => $r['unit_price'], ':t' => $r['total_amount']]);
     }
 
-    // 4) If it came from a quotation, that quotation is now used up.
+    // 3) If it came from a quotation, that quotation is now used up.
     if ($useQuote) {
         $pdo->prepare("UPDATE quotation SET status = 'Ordered' WHERE quotation_id = :id")->execute([':id' => $qid]);
     }
 
     $pdo->commit();
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    if (($e->errorInfo[0] ?? $e->getCode()) === '45000') {
+        respond(['success' => false, 'message' => 'Inventory changed while placing your order. Please review stock and try again.'], 409);
+    }
+    throw $e;
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     throw $e;

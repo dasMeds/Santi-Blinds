@@ -45,8 +45,13 @@
         <p class="section-desc">Generate an order &amp; revenue report for a date range.</p>
       </div>
       <div class="admin-toolbar">
+        <input type="search" id="reportSearch" placeholder="Search customer, product, or order #" />
         <label>From <input type="date" id="reportFrom" /></label>
         <label>To <input type="date" id="reportTo" /></label>
+        <select id="reportStatusFilter" aria-label="Filter report by order status">
+          <option value="">All statuses</option><option>Pending</option><option>Processing</option>
+          <option>Ready for Install</option><option>Completed</option><option>Cancelled</option>
+        </select>
         <button id="runReportBtn" class="btn btn--ghost">Run Report</button>
         <button id="exportReportBtn" class="btn btn--primary">Export CSV</button>
       </div>
@@ -57,6 +62,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div class="admin-pagination" id="reportsPagination"></div>
     </main>
   </div>
 

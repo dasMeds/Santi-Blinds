@@ -1,311 +1,258 @@
 -- ============================================================
---  Demo data for admin dashboard testing.
---  Import AFTER schema.sql. Do NOT import on a live site.
---  The dates are relative to NOW(), so monthly stats remain useful.
+-- Santi Blinds — 5,000-row dummy data generator
+-- Run AFTER importing your unified schema and starter catalog.
+--
+-- Inserts exactly 5,000 rows:
+--   customer        1,000
+--   quotation       1,000
+--   quotation_item  1,000
+--   orders          1,000
+--   inquiry         1,000
+--
+-- Notes:
+-- * Uses clearly fictional names, emails, phone numbers, and addresses.
+-- * Does not create or modify the embedded owner account.
+-- * Raises product stock before inserting orders because the supplied
+--   orders triggers reserve inventory for every non-cancelled order line.
+-- * Re-running this script creates another batch of 5,000 rows.
+-- * Requires the starter category/product/material/color records to exist.
 -- ============================================================
+
 USE santiblinds;
 
--- Customers used by the admin dashboard and customer list screens.
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'Maria Santos', 'maria.santos@example.com', '0917 123 4567', 'Makati City', NULL, DATE_SUB(NOW(), INTERVAL 150 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'maria.santos@example.com');
+DELIMITER $$
 
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'James Reyes', 'james.reyes@example.com', '0918 234 5678', 'BGC, Taguig', NULL, DATE_SUB(NOW(), INTERVAL 120 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'james.reyes@example.com');
+DROP PROCEDURE IF EXISTS generate_santiblinds_dummy_data$$
 
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'Claire Mendoza', 'claire.mendoza@example.com', '0919 345 6789', 'Quezon City', NULL, DATE_SUB(NOW(), INTERVAL 90 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'claire.mendoza@example.com');
+CREATE PROCEDURE generate_santiblinds_dummy_data()
+BEGIN
+  DECLARE i INT DEFAULT 1;
+  DECLARE v_customer_id INT;
+  DECLARE v_quotation_id INT;
+  DECLARE v_product_id INT;
+  DECLARE v_material_id INT;
+  DECLARE v_color_id INT;
+  DECLARE v_width DECIMAL(6,1);
+  DECLARE v_height DECIMAL(6,1);
+  DECLARE v_qty INT;
+  DECLARE v_unit_price DECIMAL(10,2);
+  DECLARE v_total DECIMAL(12,2);
+  DECLARE v_status VARCHAR(30);
+  DECLARE v_order_id INT;
 
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'Paolo Villanueva', 'paolo.v@example.com', '0920 456 7890', 'Valenzuela City', NULL, DATE_SUB(NOW(), INTERVAL 40 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'paolo.v@example.com');
+  DECLARE v_product_min INT;
+  DECLARE v_product_max INT;
+  DECLARE v_material_min INT;
+  DECLARE v_material_max INT;
+  DECLARE v_color_min INT;
+  DECLARE v_color_max INT;
+  DECLARE v_product_count INT;
+  DECLARE v_material_count INT;
+  DECLARE v_color_count INT;
 
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'Anna Cruz', 'anna.cruz@example.com', '0921 567 8901', 'Pasig City', NULL, DATE_SUB(NOW(), INTERVAL 10 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'anna.cruz@example.com');
+  SELECT COUNT(*), MIN(product_id), MAX(product_id)
+    INTO v_product_count, v_product_min, v_product_max FROM product;
+  SELECT COUNT(*), MIN(material_id), MAX(material_id)
+    INTO v_material_count, v_material_min, v_material_max FROM material;
+  SELECT COUNT(*), MIN(color_id), MAX(color_id)
+    INTO v_color_count, v_color_min, v_color_max FROM color;
 
-INSERT INTO customer (full_name, email, phone, address, password_hash, created_at)
-SELECT 'Sarah Lim', 'sarah.lim@example.com', '0932 111 2233', 'Cebu City', NULL, DATE_SUB(NOW(), INTERVAL 7 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM customer WHERE email = 'sarah.lim@example.com');
+  IF v_product_count = 0 OR v_material_count = 0 OR v_color_count = 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Starter product, material, and color data must exist before generating dummy data.';
+  END IF;
 
--- Sample quotations to exercise the quote workflow.
-INSERT INTO quotation (customer_id, total_amount, status, valid_until, created_at)
-SELECT c.customer_id, 18400.00, 'Accepted', DATE_ADD(NOW(), INTERVAL 30 DAY), DATE_SUB(NOW(), INTERVAL 18 DAY)
-FROM customer c
-WHERE c.email = 'maria.santos@example.com'
-  AND NOT EXISTS (SELECT 1 FROM quotation WHERE customer_id = c.customer_id AND total_amount = 18400.00);
+  -- Ensure sufficient stock for the 1,000 generated order lines.
+  -- The order triggers will subtract the quantities as rows are inserted.
+  UPDATE product SET stock_qty = GREATEST(stock_qty, 100000);
 
-INSERT INTO quotation_item (quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount)
-SELECT q.quotation_id,
-       p.product_id,
-       m.material_id,
-       col.color_id,
-       180.0, 210.0, 2, 9200.00, 18400.00
+  -- 1) 1,000 customers
+  SET i = 1;
+  WHILE i <= 1000 DO
+    INSERT INTO customer
+      (full_name, email, phone, address, password_hash, created_at)
+    VALUES
+      (
+        CONCAT(
+          ELT(1 + MOD(i - 1, 20),
+            'Alex','Jamie','Taylor','Morgan','Jordan','Casey','Riley','Avery',
+            'Cameron','Drew','Skyler','Reese','Quinn','Parker','Robin','Sam',
+            'Kris','Dana','Lee','Noel'),
+          ' ',
+          ELT(1 + MOD(i - 1, 25),
+            'Santos','Reyes','Cruz','Garcia','Mendoza','Bautista','Dela Cruz',
+            'Ramos','Villanueva','Flores','Gonzales','Aquino','Castillo',
+            'Navarro','Torres','Rivera','Fernandez','Morales','Gutierrez',
+            'Diaz','Lopez','Perez','Santiago','Domingo','Mercado')
+        ),
+        CONCAT('dummy.customer.', LPAD(i, 4, '0'), '@example.com'),
+        CONCAT('+639', LPAD(100000000 + i, 9, '0')),
+        CONCAT(
+          'Unit ', 1 + MOD(i, 99), ', ',
+          ELT(1 + MOD(i - 1, 10),
+            'Rizal Street','Mabini Avenue','Bonifacio Road','Luna Street',
+            'Del Pilar Street','Quezon Avenue','Burgos Street','Jacinto Road',
+            'Katipunan Avenue','Andres Street'),
+          ', ',
+          ELT(1 + MOD(i - 1, 10),
+            'Navotas','Malabon','Caloocan','Quezon City','Manila',
+            'Pasig','Makati','Taguig','Marikina','Pasay'),
+          ', Philippines'
+        ),
+        NULL,
+        DATE_SUB(NOW(), INTERVAL MOD(i * 13, 900) DAY)
+      );
+    SET i = i + 1;
+  END WHILE;
+
+  -- 2) 1,000 quotations, linked to the 1,000 newly inserted customers.
+  SET i = 1;
+  WHILE i <= 1000 DO
+    SET v_customer_id = (SELECT customer_id
+                         FROM customer
+                         WHERE email = CONCAT('dummy.customer.', LPAD(i, 4, '0'), '@example.com')
+                         LIMIT 1);
+    SET v_product_id = v_product_min + MOD(i - 1, v_product_max - v_product_min + 1);
+    SET v_material_id = v_material_min + MOD(i - 1, v_material_max - v_material_min + 1);
+    SET v_color_id = v_color_min + MOD(i - 1, v_color_max - v_color_min + 1);
+    SET v_width = 60 + MOD(i * 7, 181);
+    SET v_height = 80 + MOD(i * 11, 221);
+    SET v_qty = 1 + MOD(i, 4);
+    SET v_unit_price = (SELECT base_price FROM product WHERE product_id = v_product_id)
+                     + (SELECT price_modifier FROM material WHERE material_id = v_material_id);
+    SET v_total = ROUND(v_unit_price * v_qty * (v_width / 100) * (v_height / 100), 2);
+
+    INSERT INTO quotation
+      (customer_id, total_amount, status, valid_until, created_at)
+    VALUES
+      (
+        v_customer_id,
+        v_total,
+        ELT(1 + MOD(i - 1, 4), 'Active','Approved','Expired','Converted'),
+        DATE_ADD(NOW(), INTERVAL (7 + MOD(i, 30)) DAY),
+        DATE_SUB(NOW(), INTERVAL MOD(i * 3, 365) DAY)
+      );
+    SET v_quotation_id = LAST_INSERT_ID();
+
+    -- One quotation item per quotation = 1,000 rows.
+    INSERT INTO quotation_item
+      (quotation_id, product_id, material_id, color_id,
+       width_cm, height_cm, quantity, unit_price, total_amount)
+    VALUES
+      (v_quotation_id, v_product_id, v_material_id, v_color_id,
+       v_width, v_height, v_qty, v_unit_price, v_total);
+
+    SET i = i + 1;
+  END WHILE;
+
+  -- 3) 1,000 order lines. Each gets a unique order_id and references
+  -- the matching generated customer and quotation.
+  SET i = 1;
+  WHILE i <= 1000 DO
+    SET v_customer_id = (SELECT customer_id
+                         FROM customer
+                         WHERE email = CONCAT('dummy.customer.', LPAD(i, 4, '0'), '@example.com')
+                         LIMIT 1);
+    SET v_quotation_id = (
+      SELECT q.quotation_id
+      FROM quotation q
+      WHERE q.customer_id = v_customer_id
+      ORDER BY q.quotation_id DESC
+      LIMIT 1
+    );
+    SET v_product_id = v_product_min + MOD(i - 1, v_product_max - v_product_min + 1);
+    SET v_material_id = v_material_min + MOD(i + 1, v_material_max - v_material_min + 1);
+    SET v_color_id = v_color_min + MOD(i + 2, v_color_max - v_color_min + 1);
+    SET v_width = 60 + MOD(i * 5, 181);
+    SET v_height = 80 + MOD(i * 9, 221);
+    SET v_qty = 1 + MOD(i, 3);
+    SET v_unit_price = (SELECT base_price FROM product WHERE product_id = v_product_id)
+                     + (SELECT price_modifier FROM material WHERE material_id = v_material_id);
+    SET v_total = ROUND(v_unit_price * v_qty * (v_width / 100) * (v_height / 100), 2);
+    SET v_status = ELT(1 + MOD(i - 1, 5),
+                       'Pending','Processing','Ready for Install','Completed','Cancelled');
+
+    INSERT INTO orders
+      (order_id, customer_id, quotation_id, product_id, material_id, color_id,
+       width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
+    VALUES
+      (
+        100000 + i,
+        v_customer_id,
+        v_quotation_id,
+        v_product_id,
+        v_material_id,
+        v_color_id,
+        v_width,
+        v_height,
+        v_qty,
+        v_unit_price,
+        v_total,
+        v_status,
+        DATE_SUB(NOW(), INTERVAL MOD(i * 2, 365) DAY)
+      );
+
+    SET i = i + 1;
+  END WHILE;
+
+  -- 4) 1,000 inquiries linked to generated customers and valid products.
+  SET i = 1;
+  WHILE i <= 1000 DO
+    SET v_customer_id = (SELECT customer_id
+                         FROM customer
+                         WHERE email = CONCAT('dummy.customer.', LPAD(i, 4, '0'), '@example.com')
+                         LIMIT 1);
+    SET v_product_id = v_product_min + MOD(i - 1, v_product_max - v_product_min + 1);
+
+    INSERT INTO inquiry (customer_id, product_id, message, status, created_at)
+    VALUES
+      (
+        v_customer_id,
+        v_product_id,
+        ELT(1 + MOD(i - 1, 8),
+          'Could you provide an estimate for two windows?',
+          'Is installation included in the quoted price?',
+          'What materials are available for this blind type?',
+          'Can this product be made to a custom window size?',
+          'How long does installation usually take?',
+          'Do you have samples of the available colors?',
+          'Can I request blackout material for this product?',
+          'Please contact me about measurement and installation options.'),
+        ELT(1 + MOD(i - 1, 4), 'New','In Progress','Responded','Closed'),
+        DATE_SUB(NOW(), INTERVAL MOD(i * 5, 365) DAY)
+      );
+
+    SET i = i + 1;
+  END WHILE;
+END$$
+
+CALL generate_santiblinds_dummy_data()$$
+DROP PROCEDURE IF EXISTS generate_santiblinds_dummy_data$$
+
+DELIMITER ;
+
+-- Verify inserted rows (expected 1,000 in each of these five tables).
+SELECT 'customer' AS table_name, COUNT(*) AS rows_added
+FROM customer
+WHERE email LIKE 'dummy.customer.%@example.com'
+UNION ALL
+SELECT 'quotation', COUNT(*)
 FROM quotation q
-JOIN product p ON p.name = 'Roller Blinds'
-JOIN material m ON m.name = 'Blackout'
-JOIN color col ON col.name = 'Charcoal'
-WHERE q.customer_id = (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com')
-  AND q.total_amount = 18400.00
-  AND NOT EXISTS (SELECT 1 FROM quotation_item WHERE quotation_id = q.quotation_id AND product_id = p.product_id);
-
-INSERT INTO quotation (customer_id, total_amount, status, valid_until, created_at)
-SELECT c.customer_id, 32150.00, 'Pending', DATE_ADD(NOW(), INTERVAL 21 DAY), DATE_SUB(NOW(), INTERVAL 9 DAY)
-FROM customer c
-WHERE c.email = 'james.reyes@example.com'
-  AND NOT EXISTS (SELECT 1 FROM quotation WHERE customer_id = c.customer_id AND total_amount = 32150.00);
-
-INSERT INTO quotation_item (quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount)
-SELECT q.quotation_id,
-       p.product_id,
-       m.material_id,
-       col.color_id,
-       210.0, 240.0, 1, 32150.00, 32150.00
-FROM quotation q
-JOIN product p ON p.name = 'Motorized Blinds'
-JOIN material m ON m.name = 'Light-filtering'
-JOIN color col ON col.name = 'Ivory White'
-WHERE q.customer_id = (SELECT customer_id FROM customer WHERE email = 'james.reyes@example.com')
-  AND q.total_amount = 32150.00
-  AND NOT EXISTS (SELECT 1 FROM quotation_item WHERE quotation_id = q.quotation_id AND product_id = p.product_id);
-
--- A broader set of order rows so the admin status filters are not empty.
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1001,
-  (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com'),
-  (SELECT quotation_id FROM quotation WHERE customer_id = (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com') AND total_amount = 18400.00 ORDER BY quotation_id DESC LIMIT 1),
-  (SELECT product_id FROM product WHERE name = 'Roller Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Blackout'),
-  (SELECT color_id FROM color WHERE name = 'Charcoal'),
-  180.0, 210.0, 2, 9200.00, 18400.00, 'Completed', DATE_SUB(NOW(), INTERVAL 140 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1001
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roller Blinds')
-  AND total_amount = 18400.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1002,
-  (SELECT customer_id FROM customer WHERE email = 'james.reyes@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Motorized Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Light-filtering'),
-  (SELECT color_id FROM color WHERE name = 'Ivory White'),
-  220.0, 240.0, 1, 32150.00, 32150.00, 'Completed', DATE_SUB(NOW(), INTERVAL 110 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1002
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'james.reyes@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Motorized Blinds')
-  AND total_amount = 32150.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1003,
-  (SELECT customer_id FROM customer WHERE email = 'claire.mendoza@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Roman Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Blackout'),
-  (SELECT color_id FROM color WHERE name = 'Natural Linen'),
-  160.0, 200.0, 2, 17500.00, 35000.00, 'Completed', DATE_SUB(NOW(), INTERVAL 75 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1003
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'claire.mendoza@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roman Blinds')
-  AND total_amount = 35000.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1004,
-  (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Venetian Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Wood Grain'),
-  (SELECT color_id FROM color WHERE name = 'Walnut'),
-  130.0, 180.0, 3, 4700.00, 14100.00, 'Completed', DATE_SUB(NOW(), INTERVAL 50 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1004
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'maria.santos@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Venetian Blinds')
-  AND total_amount = 14100.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1005,
-  (SELECT customer_id FROM customer WHERE email = 'paolo.v@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Roller Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Sunscreen'),
-  (SELECT color_id FROM color WHERE name = 'Charcoal'),
-  150.0, 190.0, 5, 4200.00, 21000.00, 'Completed', DATE_SUB(NOW(), INTERVAL 25 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1005
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'paolo.v@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roller Blinds')
-  AND total_amount = 21000.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1006,
-  (SELECT customer_id FROM customer WHERE email = 'claire.mendoza@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Venetian Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Wood Grain'),
-  (SELECT color_id FROM color WHERE name = 'Dark Chocolate'),
-  120.0, 150.0, 2, 7600.00, 15200.00, 'Ready for Install', DATE_SUB(NOW(), INTERVAL 12 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1006
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'claire.mendoza@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Venetian Blinds')
-  AND total_amount = 15200.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1007,
-  (SELECT customer_id FROM customer WHERE email = 'anna.cruz@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Roman Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Blackout'),
-  (SELECT color_id FROM color WHERE name = 'Navy Blue'),
-  170.0, 200.0, 3, 7300.00, 21900.00, 'Processing', DATE_SUB(NOW(), INTERVAL 6 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1007
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'anna.cruz@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roman Blinds')
-  AND total_amount = 21900.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1008,
-  (SELECT customer_id FROM customer WHERE email = 'james.reyes@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Motorized Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Light-filtering'),
-  (SELECT color_id FROM color WHERE name = 'Steel Grey'),
-  240.0, 200.0, 1, 34500.00, 34500.00, 'Pending', DATE_SUB(NOW(), INTERVAL 3 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1008
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'james.reyes@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Motorized Blinds')
-  AND total_amount = 34500.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1009,
-  (SELECT customer_id FROM customer WHERE email = 'sarah.lim@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Roller Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Light-filtering'),
-  (SELECT color_id FROM color WHERE name = 'Crimson Red'),
-  100.0, 120.0, 1, 4200.00, 4200.00, 'Cancelled', DATE_SUB(NOW(), INTERVAL 2 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1009
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'sarah.lim@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roller Blinds')
-  AND total_amount = 4200.00
-);
-
-INSERT INTO orders (order_id, customer_id, quotation_id, product_id, material_id, color_id, width_cm, height_cm, quantity, unit_price, total_amount, status, order_date)
-SELECT
-  1010,
-  (SELECT customer_id FROM customer WHERE email = 'paolo.v@example.com'),
-  NULL,
-  (SELECT product_id FROM product WHERE name = 'Roller Blinds'),
-  (SELECT material_id FROM material WHERE name = 'Blackout'),
-  (SELECT color_id FROM color WHERE name = 'Jet Black'),
-  110.0, 140.0, 2, 4500.00, 9000.00, 'Completed', DATE_SUB(NOW(), INTERVAL 1 DAY)
-WHERE NOT EXISTS (
-  SELECT 1 FROM orders WHERE order_id = 1010
-  AND customer_id = (SELECT customer_id FROM customer WHERE email = 'paolo.v@example.com')
-  AND product_id = (SELECT product_id FROM product WHERE name = 'Roller Blinds')
-  AND total_amount = 9000.00
-);
-
--- Completed orders stored as paid sales for the revenue reports.
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1001, 18400.00, 'Cash', DATE_SUB(NOW(), INTERVAL 140 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1001);
-
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1002, 32150.00, 'GCash', DATE_SUB(NOW(), INTERVAL 110 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1002);
-
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1003, 35000.00, 'Bank Transfer', DATE_SUB(NOW(), INTERVAL 75 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1003);
-
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1004, 14100.00, 'Cash', DATE_SUB(NOW(), INTERVAL 50 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1004);
-
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1005, 21000.00, 'GCash', DATE_SUB(NOW(), INTERVAL 25 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1005);
-
-INSERT INTO sale (order_id, amount_paid, payment_method, sale_date)
-SELECT 1010, 9000.00, 'Bank Transfer', DATE_SUB(NOW(), INTERVAL 1 DAY)
-WHERE NOT EXISTS (SELECT 1 FROM sale WHERE order_id = 1010);
-
--- Customer inquiries to validate the inquiry workflow and admin triage.
-INSERT INTO inquiry (customer_id, product_id, message, status, created_at)
-SELECT c.customer_id,
-       p.product_id,
-       'We need a quote for sliding bedroom panels with a soft grey finish and smart-lift option.',
-       'New',
-       DATE_SUB(NOW(), INTERVAL 15 DAY)
-FROM customer c
-JOIN product p ON p.name = 'Vertical Blinds'
-WHERE c.email = 'maria.santos@example.com'
-  AND NOT EXISTS (SELECT 1 FROM inquiry WHERE customer_id = c.customer_id AND product_id = p.product_id);
-
-INSERT INTO inquiry (customer_id, product_id, message, status, created_at)
-SELECT c.customer_id,
-       p.product_id,
-       'Interested in blackout fabric for a child''s room and would like installation cost details.',
-       'Follow Up',
-       DATE_SUB(NOW(), INTERVAL 8 DAY)
-FROM customer c
-JOIN product p ON p.name = 'Roman Blinds'
-WHERE c.email = 'anna.cruz@example.com'
-  AND NOT EXISTS (SELECT 1 FROM inquiry WHERE customer_id = c.customer_id AND product_id = p.product_id);
-
-INSERT INTO inquiry (customer_id, product_id, message, status, created_at)
-SELECT c.customer_id,
-       p.product_id,
-       'Do you have a quiet motorized option with app control for the office?',
-       'Resolved',
-       DATE_SUB(NOW(), INTERVAL 4 DAY)
-FROM customer c
-JOIN product p ON p.name = 'Motorized Blinds'
-WHERE c.email = 'james.reyes@example.com'
-  AND NOT EXISTS (SELECT 1 FROM inquiry WHERE customer_id = c.customer_id AND product_id = p.product_id);
-
--- Lower some stock values to trigger the low-stock admin alerts.
-UPDATE product
-SET stock_qty = CASE
-  WHEN name = 'Roller Blinds' THEN 3
-  WHEN name = 'Venetian Blinds' THEN 8
-  WHEN name = 'Roman Blinds' THEN 5
-  WHEN name = 'Vertical Blinds' THEN 12
-  WHEN name = 'Cellular / Honeycomb' THEN 2
-  WHEN name = 'Motorized Blinds' THEN 1
-  ELSE stock_qty
-END;
-
--- Optional audit trail so admin activity pages have visible sample entries.
-INSERT INTO admin_audit_log (owner_id, admin_name, action, details, created_at)
-SELECT owner_id, 'Santi Blinds Owner', 'Seed data import', 'Loaded demo customers, quotations, orders, sales, and inquiry records.', NOW()
-FROM owner_manager
-WHERE email = 'owner@santiblinds.com'
-  AND NOT EXISTS (SELECT 1 FROM admin_audit_log WHERE action = 'Seed data import' AND details = 'Loaded demo customers, quotations, orders, sales, and inquiry records.');
+JOIN customer c ON c.customer_id = q.customer_id
+WHERE c.email LIKE 'dummy.customer.%@example.com'
+UNION ALL
+SELECT 'quotation_item', COUNT(*)
+FROM quotation_item qi
+JOIN quotation q ON q.quotation_id = qi.quotation_id
+JOIN customer c ON c.customer_id = q.customer_id
+WHERE c.email LIKE 'dummy.customer.%@example.com'
+UNION ALL
+SELECT 'orders', COUNT(*)
+FROM orders o
+JOIN customer c ON c.customer_id = o.customer_id
+WHERE c.email LIKE 'dummy.customer.%@example.com'
+UNION ALL
+SELECT 'inquiry', COUNT(*)
+FROM inquiry i
+JOIN customer c ON c.customer_id = i.customer_id
+WHERE c.email LIKE 'dummy.customer.%@example.com';

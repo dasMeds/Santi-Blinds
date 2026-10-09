@@ -46,6 +46,11 @@
       </div>
       <div class="admin-toolbar">
         <input type="text" id="customerSearch" placeholder="Search name, phone, email, or address…" />
+        <input type="date" id="customerFrom" aria-label="Customers created from date" />
+        <input type="date" id="customerTo" aria-label="Customers created through date" />
+        <select id="customerOrdersFilter" aria-label="Filter customers by order history">
+          <option value="">All customers</option><option value="yes">Has orders</option><option value="no">No orders</option>
+        </select>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table" id="customersTable">
@@ -53,6 +58,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div class="admin-pagination" id="customersPagination"></div>
     </main>
   </div>
 

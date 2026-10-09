@@ -47,6 +47,12 @@ if ($method === 'POST') {
 
     $pdo->beginTransaction();
     try {
+        $stockErrors = lockAvailableInventory($pdo, $v['rows']);
+        if ($stockErrors) {
+            $pdo->rollBack();
+            respond(['success' => false, 'errors' => $stockErrors], 409);
+        }
+
         $pdo->prepare("INSERT INTO quotation (customer_id, total_amount, status, valid_until, created_at)
                        VALUES (:c, :t, 'Active', :v, :n)")
             ->execute([':c' => $customerId, ':t' => $v['total'], ':v' => $validUntil, ':n' => date('Y-m-d H:i:s', $now)]);

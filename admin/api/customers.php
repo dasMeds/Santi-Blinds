@@ -122,6 +122,32 @@ if (!empty($_GET['id'])) {
 }
 
 $where = []; $params = [];
+$from = trim((string)($_GET['from'] ?? ''));
+$to = trim((string)($_GET['to'] ?? ''));
+$isDate = static function (string $value): bool {
+    if ($value === '') return true;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) return false;
+    $date = DateTime::createFromFormat('!Y-m-d', $value);
+    return $date !== false && $date->format('Y-m-d') === $value;
+};
+if (!$isDate($from) || !$isDate($to)) fail(422, 'Dates must use YYYY-MM-DD format.');
+if ($from !== '' && $to !== '' && $from > $to) fail(422, 'The start date must be on or before the end date.');
+if ($from !== '') {
+    $where[] = 'c.created_at >= :from_date';
+    $params[':from_date'] = $from . ' 00:00:00';
+}
+if ($to !== '') {
+    $where[] = 'c.created_at < DATE_ADD(:to_date, INTERVAL 1 DAY)';
+    $params[':to_date'] = $to;
+}
+$ordersFilter = (string)($_GET['orders'] ?? '');
+if ($ordersFilter === 'yes') {
+    $where[] = 'EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)';
+} elseif ($ordersFilter === 'no') {
+    $where[] = 'NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)';
+} elseif ($ordersFilter !== '') {
+    fail(422, 'Invalid customer order filter.');
+}
 if (!empty($_GET['search'])) {
     $where[] = "(c.full_name LIKE :s1 OR c.phone LIKE :s2 OR c.email LIKE :s3 OR c.address LIKE :s4)";
     $like = '%' . $_GET['search'] . '%';
@@ -131,8 +157,23 @@ $sql = "SELECT c.customer_id, c.full_name, c.email, c.phone, c.address, c.create
                (SELECT COUNT(DISTINCT o.order_id) FROM orders o WHERE o.customer_id = c.customer_id) AS order_count
         FROM customer c";
 if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
-$sql .= ' ORDER BY c.created_at DESC, c.customer_id DESC';
+$countSql = 'SELECT COUNT(*) FROM customer c';
+if ($where) $countSql .= ' WHERE ' . implode(' AND ', $where);
+$countStmt = $pdo->prepare($countSql);
+$countStmt->execute($params);
+$total = (int)$countStmt->fetchColumn();
+$page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT);
+$perPage = filter_var($_GET['per_page'] ?? 25, FILTER_VALIDATE_INT);
+if ($page === false || $page < 1 || $perPage === false || !in_array($perPage, [25, 50, 100, 200], true)) {
+    fail(422, 'Invalid pagination values.');
+}
+$pages = max(1, (int)ceil($total / $perPage));
+$page = min($page, $pages);
+$offset = ($page - 1) * $perPage;
+$sql .= " ORDER BY c.created_at DESC, c.customer_id DESC LIMIT $perPage OFFSET $offset";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
-echo json_encode(['success' => true, 'customers' => $stmt->fetchAll()]);
+echo json_encode(['success' => true, 'customers' => $stmt->fetchAll(), 'pagination' => [
+    'page' => $page, 'per_page' => $perPage, 'total' => $total, 'pages' => $pages,
+]]);

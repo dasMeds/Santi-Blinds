@@ -829,7 +829,7 @@
   async function adminApiGet(endpoint, params = {}) {
     const qs = new URLSearchParams(params).toString();
     const res = await fetch(`${ADMIN_API}/${endpoint}${qs ? '?' + qs : ''}`, { credentials: 'include' });
-    if (res.status === 401) { window.location.href = 'admin-login.html'; return null; }
+    if (res.status === 401) { window.location.href = 'index.html'; return null; }
     return parseJson(res);
   }
 
@@ -841,7 +841,7 @@
       body: JSON.stringify(body),
     });
     // login.php answers 401 for a wrong password; let the login form show that message.
-    if (res.status === 401 && endpoint !== 'login.php') { window.location.href = 'admin-login.html'; return null; }
+    if (res.status === 401 && endpoint !== 'login.php') { window.location.href = 'index.html'; return null; }
     return parseJson(res);
   }
 
@@ -853,12 +853,13 @@
     return {
       'Pending': 'admin-badge--pending',
       'Processing': 'admin-badge--processing',
+      'Ready': 'admin-badge--ready',
       'Ready for Install': 'admin-badge--ready',
       'Completed': 'admin-badge--completed',
       'Cancelled': 'admin-badge--cancelled',
     }[status] || '';
   }
-  const badge = s => `<span class="admin-badge ${statusBadgeClass(s)}">${esc(s)}</span>`;
+  const badge = s => `<span class="admin-badge ${statusBadgeClass(s)}">${esc(s === 'Ready' ? 'Ready for Install' : s)}</span>`;
 
   function statCard(label, value) {
     return `<div class="admin-stat-card"><span class="admin-stat-card__label">${label}</span><span class="admin-stat-card__value">${value}</span></div>`;
@@ -866,26 +867,101 @@
   function emptyRow(cols, msg) {
     return `<tr><td colspan="${cols}" class="admin-empty">${esc(msg || 'No data yet.')}</td></tr>`;
   }
+  function renderAdminPagination(container, pagination, onChange) {
+    if (!container || !pagination) return;
+    const { page, pages, per_page: perPage, total } = pagination;
+    const numbers = new Set([1, pages]);
+    for (let number = Math.max(1, page - 2); number <= Math.min(pages, page + 2); number++) numbers.add(number);
+    const pageButtons = [];
+    let previous = 0;
+    [...numbers].sort((a, b) => a - b).forEach(number => {
+      if (previous && number - previous > 1) pageButtons.push('<span class="admin-pagination__ellipsis">…</span>');
+      pageButtons.push(`<button type="button" class="admin-pagination__page${number === page ? ' is-active' : ''}" data-page="${number}"${number === page ? ' aria-current="page"' : ''}>${number}</button>`);
+      previous = number;
+    });
+    container.innerHTML = `
+      <span class="admin-pagination__total">${Number(total).toLocaleString()} total</span>
+      <div class="admin-pagination__controls">
+        <button type="button" class="admin-pagination__page" data-page="${page - 1}"${page <= 1 ? ' disabled' : ''}>‹ Prev</button>
+        ${pageButtons.join('')}
+        <select class="admin-pagination__size" aria-label="Rows per page">
+          ${[25, 50, 100, 200].map(size => `<option value="${size}"${size === perPage ? ' selected' : ''}>${size}</option>`).join('')}
+        </select>
+        <button type="button" class="admin-pagination__page" data-page="${page + 1}"${page >= pages ? ' disabled' : ''}>Next ›</button>
+      </div>`;
+    container.onclick = event => {
+      const button = event.target.closest('[data-page]');
+      if (button && !button.disabled) onChange(Number(button.dataset.page), perPage);
+    };
+    container.onchange = event => {
+      if (event.target.matches('.admin-pagination__size')) onChange(1, Number(event.target.value));
+    };
+  }
+  async function saveQuotationStatus(select, quotationId, endpoint, reload) {
+    select.disabled = true;
+    try {
+      const result = await adminApiPost(endpoint, {
+        quotation_id: Number(quotationId),
+        status: select.value,
+      });
+      if (!result || !result.success) {
+        alert((result && result.message) || 'Could not update quotation status.');
+      }
+    } catch (error) {
+      alert(error.message || 'Could not update quotation status.');
+    }
+    await reload();
+  }
   function debounce(fn, ms) {
     let t;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
-  // ---------- Runs on every admin-*.html page except admin-login.html ----------
+  // ---------- Runs on every admin page except the login page ----------
   const sidebar = document.querySelector('.admin-sidebar');
   if (sidebar) {
     (async () => {
       const session = await adminApiGet('session.php');
-      if (!session) return; // redirected to login
+      if (!session) return; // redirected to admin/index.html
       const nameEl = document.getElementById('adminName');
       if (nameEl) nameEl.textContent = session.name;
+    })();
+
+    (async () => {
+      try {
+        const data = await adminApiGet('counts.php');
+        if (!data || !data.success) return;
+        const countByPage = {
+          'admin-orders.html': data.counts.orders,
+          'admin-quotations.html': data.counts.quotations,
+          'admin-customizations.html': data.counts.customizations,
+          'admin-reports.html': data.counts.orders,
+          'admin-customers.html': data.counts.customers,
+          'admin-audit.html': data.counts.audit,
+        };
+        sidebar.querySelectorAll('.admin-nav__link').forEach(link => {
+          const key = link.getAttribute('href');
+          if (!(key in countByPage)) return;
+          const count = document.createElement('span');
+          count.className = 'admin-nav-count';
+          count.textContent = Number(countByPage[key]).toLocaleString();
+          link.append(count);
+        });
+      } catch (error) {
+        console.error('Could not load admin section totals:', error);
+      }
     })();
 
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', async () => {
-        await adminApiPost('logout.php');
-        window.location.href = 'admin-login.html';
+        try {
+          await adminApiPost('logout.php');
+        } catch (err) {
+          console.error('Admin logout request failed:', err);
+        } finally {
+          window.location.href = 'index.php';
+        }
       });
     }
 
@@ -901,7 +977,7 @@
     });
   }
 
-  // ---------- admin-login.html (owner/manager signs in with email) ----------
+  // ---------- admin/index.html (owner/manager signs in with email) ----------
   const loginForm = document.getElementById('loginForm');
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
@@ -970,23 +1046,35 @@
     const payWrap = document.getElementById('omPayWrap');
     const msgEl = document.getElementById('omMsg');
     let currentId = null;
+    let ordersPage = 1;
+    let ordersPerPage = 25;
 
-    async function loadOrders() {
+    async function loadOrders(page = ordersPage, perPage = ordersPerPage) {
+      ordersPage = page;
+      ordersPerPage = perPage;
       const search = document.getElementById('orderSearch').value.trim();
       const status = document.getElementById('orderStatusFilter').value;
-      const data = await adminApiGet('orders.php', { search, status });
+      const from = document.getElementById('orderFrom').value;
+      const to = document.getElementById('orderTo').value;
+      const payment_method = document.getElementById('orderPaymentFilter').value;
+      const data = await adminApiGet('orders.php', { search, status, from, to, payment_method, page, per_page: perPage });
       if (!data) return;
       if (!data.success) { tbody.innerHTML = emptyRow(8, data.message); return; }
+      ordersPage = data.pagination.page;
       tbody.innerHTML = data.orders.length ? data.orders.map(o => `
         <tr>
           <td>#${o.order_id}</td>
           <td>${esc(o.full_name)}${o.quotation_ref ? `<br><small>from ${esc(o.quotation_ref)}</small>` : ''}</td>
           <td>${esc(o.products)}</td>
-          <td>${o.quantity}</td><td>${money(o.amount)}</td><td>${badge(o.status)}</td>
+          <td>${o.quantity}</td><td>${money(o.amount)}</td>
+          <td><select class="admin-inline-status" data-inline-order-status="${o.order_id}" data-payment-method="${esc(o.payment_method || 'Cash')}" aria-label="Change order ${o.order_id} status">
+            ${['Pending', 'Processing', 'Ready for Install', 'Completed', 'Cancelled'].map(status => `<option${status === o.status ? ' selected' : ''}>${status}</option>`).join('')}
+          </select></td>
           <td>${fmtDate(o.order_date)}</td>
           <td><button class="btn btn--ghost" data-view="${o.order_id}">View</button></td>
         </tr>
       `).join('') : emptyRow(8, 'No orders found.');
+      renderAdminPagination(document.getElementById('ordersPagination'), data.pagination, loadOrders);
     }
 
     // Payment method only matters when the order is being marked Completed (it records the sale).
@@ -1030,6 +1118,27 @@
       modal.hidden = false;
     });
 
+    tbody.addEventListener('change', async (e) => {
+      const select = e.target.closest('[data-inline-order-status]');
+      if (!select) return;
+      select.disabled = true;
+      try {
+        const result = await adminApiPost('orders.php', {
+          id: Number(select.dataset.inlineOrderStatus),
+          status: select.value,
+          payment_method: select.dataset.paymentMethod || 'Cash',
+        });
+        if (result && result.success) await loadOrders(ordersPage, ordersPerPage);
+        else {
+          alert((result && result.message) || 'Could not update order status.');
+          await loadOrders(ordersPage, ordersPerPage);
+        }
+      } catch (error) {
+        alert(error.message || 'Could not update order status.');
+        await loadOrders(ordersPage, ordersPerPage);
+      }
+    });
+
     document.getElementById('omSaveBtn').addEventListener('click', async () => {
       msgEl.textContent = 'Saving…';
       try {
@@ -1038,14 +1147,107 @@
           status: statusSel.value,
           payment_method: document.getElementById('omPayment').value,
         });
-        if (res && res.success) { modal.hidden = true; loadOrders(); }
+        if (res && res.success) { modal.hidden = true; loadOrders(ordersPage, ordersPerPage); }
         else msgEl.textContent = (res && res.message) || 'Could not save.';
       } catch (err) { msgEl.textContent = err.message; }
     });
 
-    document.getElementById('orderSearch').addEventListener('input', debounce(loadOrders, 250));
-    document.getElementById('orderStatusFilter').addEventListener('change', loadOrders);
+    const resetOrderPage = () => loadOrders(1, ordersPerPage);
+    document.getElementById('orderSearch').addEventListener('input', debounce(resetOrderPage, 250));
+    document.getElementById('orderStatusFilter').addEventListener('change', resetOrderPage);
+    document.getElementById('orderPaymentFilter').addEventListener('change', resetOrderPage);
+    document.getElementById('orderFrom').addEventListener('change', resetOrderPage);
+    document.getElementById('orderTo').addEventListener('change', resetOrderPage);
     loadOrders();
+  }
+
+  // ---------- admin-customizations.html (quotation items) ----------
+  const customizationsTable = document.getElementById('customizationsTable');
+  if (customizationsTable) {
+    const tbody = customizationsTable.querySelector('tbody');
+    const modal = document.getElementById('czModal');
+    const typeFilter = document.getElementById('czTypeFilter');
+    let customizationsPage = 1;
+    let customizationsPerPage = 25;
+
+    async function loadCustomizations(page = customizationsPage, perPage = customizationsPerPage) {
+      customizationsPage = page;
+      customizationsPerPage = perPage;
+      try {
+        const data = await adminApiGet('customizations.php', {
+          search: document.getElementById('czSearch').value.trim(),
+          status: document.getElementById('czStatusFilter').value,
+          blind_type: typeFilter.value,
+          from: document.getElementById('czFrom').value,
+          to: document.getElementById('czTo').value,
+          page,
+          per_page: perPage,
+        });
+        if (!data) return;
+        if (!data.success) {
+          tbody.innerHTML = emptyRow(9, data.message || 'Could not load customizations.');
+          return;
+        }
+        customizationsPage = data.pagination.page;
+        const selectedType = typeFilter.value;
+        typeFilter.innerHTML = '<option value="">All blind types</option>' + data.types.map(type =>
+          `<option value="${esc(type)}"${type === selectedType ? ' selected' : ''}>${esc(type)}</option>`
+        ).join('');
+        tbody.innerHTML = data.customizations.length ? data.customizations.map(c => `
+          <tr>
+            <td>${esc(`QT-${String(c.quotation_id).padStart(5, '0')}`)}</td>
+            <td>${esc(c.full_name)}</td><td>${esc(c.blind_type)}<br><small>${esc(c.product)}</small></td>
+            <td>${Number(c.width_cm)} × ${Number(c.height_cm)}</td><td>${Number(c.quantity)}</td>
+            <td>${money(c.total_amount)}</td>
+            <td><select class="admin-inline-status" data-customization-status="${c.quotation_id}" aria-label="Change quotation ${c.quotation_id} customization status">
+              ${['Active', 'Ordered', 'Expired'].map(status => `<option${status === c.status ? ' selected' : ''}>${status}</option>`).join('')}
+            </select></td><td>${fmtDate(c.created_at)}</td>
+            <td><button class="btn btn--ghost" data-customization="${c.quotation_item_id}">View</button></td>
+          </tr>
+        `).join('') : emptyRow(9, 'No customizations found.');
+        renderAdminPagination(document.getElementById('customizationsPagination'), data.pagination, loadCustomizations);
+      } catch (error) {
+        tbody.innerHTML = emptyRow(9, error.message || 'Could not load customizations.');
+      }
+    }
+
+    tbody.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-customization]');
+      if (!button) return;
+      try {
+        const data = await adminApiGet('customizations.php', { id: button.dataset.customization });
+        if (!data) return;
+        if (!data.success) { alert(data.message || 'Could not load customization.'); return; }
+        const c = data.customization;
+        document.getElementById('czId').textContent = `${c.quotation_id} / ${c.quotation_item_id}`;
+        document.getElementById('czCustomer').textContent = c.full_name;
+        document.getElementById('czContact').textContent = c.email || '—';
+        document.getElementById('czType').textContent = `${c.blind_type} — ${c.product}`;
+        document.getElementById('czSize').textContent = `${Number(c.width_cm)} × ${Number(c.height_cm)} cm`;
+        document.getElementById('czQty').textContent = c.quantity;
+        document.getElementById('czMaterial').textContent = c.material;
+        document.getElementById('czColor').textContent = c.color;
+        document.getElementById('czTotal').textContent = money(c.total_amount);
+        document.getElementById('czStatus').textContent = c.status;
+        document.getElementById('czDate').textContent = fmtDate(c.created_at);
+        modal.hidden = false;
+      } catch (error) {
+        alert(error.message || 'Could not load customization.');
+      }
+    });
+
+    tbody.addEventListener('change', (event) => {
+      const select = event.target.closest('[data-customization-status]');
+      if (select) saveQuotationStatus(select, select.dataset.customizationStatus, 'customizations.php', loadCustomizations);
+    });
+
+    const resetCustomizationPage = () => loadCustomizations(1, customizationsPerPage);
+    document.getElementById('czSearch').addEventListener('input', debounce(resetCustomizationPage, 250));
+    document.getElementById('czStatusFilter').addEventListener('change', resetCustomizationPage);
+    typeFilter.addEventListener('change', resetCustomizationPage);
+    document.getElementById('czFrom').addEventListener('change', resetCustomizationPage);
+    document.getElementById('czTo').addEventListener('change', resetCustomizationPage);
+    loadCustomizations();
   }
 
   // ---------- admin-inventory.html (product.stock_qty) ----------
@@ -1061,12 +1263,14 @@
       if (note) note.textContent = `Products with ${data.low_stock_level} or fewer in stock are flagged as low.`;
 
       tbody.innerHTML = data.inventory.length ? data.inventory.map(p => {
+        const stock = Number(p.stock_qty);
         const low = Number(p.low_stock) === 1;
+        const stockLabel = stock === 0 ? 'Out of stock' : `${stock}${low ? ' (low)' : ''}`;
         return `
           <tr>
             <td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.blind_type)}</td>
             <td>${money(p.base_price)}</td>
-            <td><span class="admin-badge ${low ? 'admin-badge--low' : 'admin-badge--ok'}">${p.stock_qty}${low ? ' (low)' : ''}</span></td>
+            <td><span class="admin-badge ${low ? 'admin-badge--low' : 'admin-badge--ok'}">${stockLabel}</span></td>
             <td>
               <input type="number" min="0" value="${p.stock_qty}" data-qty="${p.product_id}" style="width:5.5rem" />
               <button class="btn btn--ghost" data-save="${p.product_id}">Save</button>
@@ -1109,7 +1313,7 @@
         ).join('');
         productBody.innerHTML = data.products.length ? data.products.map(p => `
           <tr><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.blind_type)}</td>
-          <td>${money(p.base_price)}</td><td>${Number(p.stock_qty)}</td></tr>
+          <td>${money(p.base_price)}</td><td>${Number(p.stock_qty) === 0 ? '<span class="admin-badge admin-badge--low">Out of stock</span>' : Number(p.stock_qty)}</td></tr>
         `).join('') : emptyRow(5, 'No products yet.');
       } catch (error) {
         productBody.innerHTML = emptyRow(5, error.message || 'Could not load products.');
@@ -1151,21 +1355,29 @@
   const quotationsTable = document.getElementById('quotationsTable');
   if (quotationsTable) {
     const tbody = quotationsTable.querySelector('tbody');
-    const statusClasses = { Active: 'admin-badge--processing', Ordered: 'admin-badge--completed', Expired: 'admin-badge--cancelled' };
+    let quotationsPage = 1;
+    let quotationsPerPage = 25;
 
-    async function loadQuotations() {
+    async function loadQuotations(page = quotationsPage, perPage = quotationsPerPage) {
+      quotationsPage = page;
+      quotationsPerPage = perPage;
       try {
         const search = document.getElementById('quotationSearch').value.trim();
         const status = document.getElementById('quotationStatusFilter').value;
-        const data = await adminApiGet('quotations.php', { search, status });
+        const from = document.getElementById('quotationFrom').value;
+        const to = document.getElementById('quotationTo').value;
+        const data = await adminApiGet('quotations.php', { search, status, from, to, page, per_page: perPage });
         if (!data) return;
         if (!data.success) { tbody.innerHTML = emptyRow(8, data.message || 'Could not load quotations.'); return; }
+        quotationsPage = data.pagination.page;
         tbody.innerHTML = data.quotations.length ? data.quotations.map(q => `
           <tr class="admin-quote-row" data-quote="${q.quotation_id}" tabindex="0" aria-expanded="false">
             <td>${esc(q.reference)}</td><td>${esc(q.customer)}<br><small>${esc(q.email)}</small></td>
             <td>${Number(q.item_count)}</td><td>${money(q.total_amount)}</td>
             <td>${fmtDate(q.created_at)}</td><td>${fmtDate(q.valid_until)}</td>
-            <td><span class="admin-badge ${statusClasses[q.status] || ''}">${esc(q.status)}</span></td>
+            <td><select class="admin-inline-status" data-quotation-status="${q.quotation_id}" aria-label="Change quotation ${esc(q.reference)} status">
+              ${['Active', 'Ordered', 'Expired'].map(status => `<option${status === q.status ? ' selected' : ''}>${status}</option>`).join('')}
+            </select></td>
             <td>${q.order_id ? `#${q.order_id} ${q.order_status ? badge(q.order_status) : ''}` : '—'}</td>
           </tr>
           <tr class="admin-quote-detail" data-detail="${q.quotation_id}" hidden>
@@ -1184,12 +1396,14 @@
             </td>
           </tr>
         `).join('') : emptyRow(8, 'No quotations found.');
+        renderAdminPagination(document.getElementById('quotationsPagination'), data.pagination, loadQuotations);
       } catch (error) {
         tbody.innerHTML = emptyRow(8, error.message || 'Could not load quotations.');
       }
     }
 
     tbody.addEventListener('click', (event) => {
+      if (event.target.closest('[data-quotation-status]')) return;
       const row = event.target.closest('.admin-quote-row');
       if (!row) return;
       const detail = tbody.querySelector(`[data-detail="${row.dataset.quote}"]`);
@@ -1204,8 +1418,15 @@
         event.target.click();
       }
     });
-    document.getElementById('quotationSearch').addEventListener('input', debounce(loadQuotations, 250));
-    document.getElementById('quotationStatusFilter').addEventListener('change', loadQuotations);
+    tbody.addEventListener('change', (event) => {
+      const select = event.target.closest('[data-quotation-status]');
+      if (select) saveQuotationStatus(select, select.dataset.quotationStatus, 'quotations.php', loadQuotations);
+    });
+    const resetQuotationPage = () => loadQuotations(1, quotationsPerPage);
+    document.getElementById('quotationSearch').addEventListener('input', debounce(resetQuotationPage, 250));
+    document.getElementById('quotationStatusFilter').addEventListener('change', resetQuotationPage);
+    document.getElementById('quotationFrom').addEventListener('change', resetQuotationPage);
+    document.getElementById('quotationTo').addEventListener('change', resetQuotationPage);
     loadQuotations();
   }
 
@@ -1215,21 +1436,35 @@
     const tbody = reportTable.querySelector('tbody');
     const fromInput = document.getElementById('reportFrom');
     const toInput = document.getElementById('reportTo');
+    const reportStatusFilter = document.getElementById('reportStatusFilter');
+    const reportSearch = document.getElementById('reportSearch');
     const today = new Date();
     const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     fromInput.value = toIso(new Date(today.getFullYear(), today.getMonth(), 1));
     toInput.value = toIso(today);
     let reportRows = [];
+    let reportsPage = 1;
+    let reportsPerPage = 25;
 
-    async function loadReport() {
+    async function loadReport(page = reportsPage, perPage = reportsPerPage) {
+      reportsPage = page;
+      reportsPerPage = perPage;
       try {
-        const data = await adminApiGet('reports.php', { from: fromInput.value, to: toInput.value });
+        const data = await adminApiGet('reports.php', {
+          from: fromInput.value,
+          to: toInput.value,
+          status: reportStatusFilter.value,
+          search: reportSearch.value.trim(),
+          page,
+          per_page: perPage,
+        });
         if (!data) return;
         if (!data.success) {
           document.getElementById('reportStats').textContent = data.message || 'Could not load report.';
           tbody.innerHTML = emptyRow(8, data.message || 'Could not load report.');
           return;
         }
+        reportsPage = data.pagination.page;
         reportRows = data.orders;
         document.getElementById('reportStats').innerHTML = `
           ${statCard('Orders in Range', data.stats.orders)}
@@ -1242,6 +1477,7 @@
           <td>${esc(order.products)}</td><td>${Number(order.quantity)}</td><td>${money(order.amount)}</td>
           <td>${badge(order.status)}</td><td>${fmtDate(order.order_date)}</td></tr>
         `).join('') : emptyRow(8, 'No orders in this date range.');
+        renderAdminPagination(document.getElementById('reportsPagination'), data.pagination, loadReport);
       } catch (error) {
         document.getElementById('reportStats').textContent = error.message || 'Could not load report.';
         tbody.innerHTML = emptyRow(8, error.message || 'Could not load report.');
@@ -1249,10 +1485,44 @@
     }
 
     document.getElementById('runReportBtn').addEventListener('click', loadReport);
-    document.getElementById('exportReportBtn').addEventListener('click', () => {
+    const resetReportPage = () => loadReport(1, reportsPerPage);
+    reportStatusFilter.addEventListener('change', resetReportPage);
+    reportSearch.addEventListener('input', debounce(resetReportPage, 250));
+    fromInput.addEventListener('change', resetReportPage);
+    toInput.addEventListener('change', resetReportPage);
+    document.getElementById('exportReportBtn').addEventListener('click', async () => {
+      try {
+        const exportData = await adminApiGet('reports.php', {
+          from: fromInput.value,
+          to: toInput.value,
+          status: reportStatusFilter.value,
+          search: reportSearch.value.trim(),
+          page: 1,
+          per_page: 200,
+        });
+        if (!exportData || !exportData.success) {
+          alert((exportData && exportData.message) || 'Could not export report.');
+          return;
+        }
+        let exportRows = exportData.orders;
+        for (let page = 2; page <= exportData.pagination.pages; page++) {
+          const next = await adminApiGet('reports.php', {
+            from: fromInput.value,
+            to: toInput.value,
+            status: reportStatusFilter.value,
+            search: reportSearch.value.trim(),
+            page,
+            per_page: 200,
+          });
+          if (!next || !next.success) {
+            alert((next && next.message) || 'Could not export report.');
+            return;
+          }
+          exportRows = exportRows.concat(next.orders);
+        }
       const columns = ['Order ID', 'Customer', 'Location', 'Products', 'Quantity', 'Amount', 'Status', 'Order Date'];
       const cell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-      const csv = [columns, ...reportRows.map(order => [
+      const csv = [columns, ...exportRows.map(order => [
         order.order_id, order.full_name, order.address || '', order.products, order.quantity,
         Number(order.amount).toFixed(2), order.status, order.order_date,
       ])].map(row => row.map(cell).join(',')).join('\r\n');
@@ -1262,6 +1532,9 @@
       link.download = `santi-blinds-orders-${fromInput.value}-to-${toInput.value}.csv`;
       link.click();
       URL.revokeObjectURL(url);
+      } catch (error) {
+        alert(error.message || 'Could not export report.');
+      }
     });
     loadReport();
   }
@@ -1269,19 +1542,45 @@
   // ---------- admin-audit.html ----------
   const auditTable = document.getElementById('auditTable');
   if (auditTable) {
-    (async () => {
-      const tbody = auditTable.querySelector('tbody');
+    const tbody = auditTable.querySelector('tbody');
+    const actionFilter = document.getElementById('auditActionFilter');
+    let auditPage = 1;
+    let auditPerPage = 25;
+
+    async function loadAudit(page = auditPage, perPage = auditPerPage) {
+      auditPage = page;
+      auditPerPage = perPage;
       try {
-        const data = await adminApiGet('audit.php');
+        const data = await adminApiGet('audit.php', {
+          search: document.getElementById('auditSearch').value.trim(),
+          from: document.getElementById('auditFrom').value,
+          to: document.getElementById('auditTo').value,
+          action: actionFilter.value,
+          page,
+          per_page: perPage,
+        });
         if (!data) return;
+        auditPage = data.pagination.page;
+        const selectedAction = actionFilter.value;
+        actionFilter.innerHTML = '<option value="">All actions</option>' + data.actions.map(action =>
+          `<option value="${esc(action)}"${action === selectedAction ? ' selected' : ''}>${esc(action)}</option>`
+        ).join('');
         tbody.innerHTML = data.success && data.logs.length ? data.logs.map(log => `
           <tr><td>${fmtDate(log.created_at)}<br><small>${esc(log.created_at)}</small></td>
           <td>${esc(log.admin_name)}</td><td>${esc(log.action)}</td><td>${esc(log.details || '')}</td></tr>
         `).join('') : emptyRow(4, data.message || 'No admin actions have been recorded yet.');
+        renderAdminPagination(document.getElementById('auditPagination'), data.pagination, loadAudit);
       } catch (error) {
         tbody.innerHTML = emptyRow(4, error.message || 'Could not load the audit log.');
       }
-    })();
+    }
+
+    const resetAuditPage = () => loadAudit(1, auditPerPage);
+    document.getElementById('auditSearch').addEventListener('input', debounce(resetAuditPage, 250));
+    document.getElementById('auditFrom').addEventListener('change', resetAuditPage);
+    document.getElementById('auditTo').addEventListener('change', resetAuditPage);
+    actionFilter.addEventListener('change', resetAuditPage);
+    loadAudit();
   }
 
   // ---------- admin-sales.html (sale table) ----------
@@ -1318,12 +1617,20 @@
   if (customersTable) {
     const tbody = customersTable.querySelector('tbody');
     const modal = document.getElementById('customerModal');
+    let customersPage = 1;
+    let customersPerPage = 25;
 
-    async function loadCustomers() {
+    async function loadCustomers(page = customersPage, perPage = customersPerPage) {
+      customersPage = page;
+      customersPerPage = perPage;
       const search = document.getElementById('customerSearch').value.trim();
-      const data = await adminApiGet('customers.php', { search });
+      const from = document.getElementById('customerFrom').value;
+      const to = document.getElementById('customerTo').value;
+      const orders = document.getElementById('customerOrdersFilter').value;
+      const data = await adminApiGet('customers.php', { search, from, to, orders, page, per_page: perPage });
       if (!data) return;
       if (!data.success) { tbody.innerHTML = emptyRow(6, data.message); return; }
+      customersPage = data.pagination.page;
       tbody.innerHTML = data.customers.length ? data.customers.map(c => `
         <tr>
           <td>${esc(c.full_name)}</td><td>${esc(c.phone || '—')}</td><td>${esc(c.email || '—')}</td>
@@ -1331,6 +1638,7 @@
           <td><button class="btn btn--ghost" data-view="${c.customer_id}">View</button></td>
         </tr>
       `).join('') : emptyRow(6, 'No customers found.');
+      renderAdminPagination(document.getElementById('customersPagination'), data.pagination, loadCustomers);
     }
 
     tbody.addEventListener('click', async (e) => {
@@ -1404,7 +1712,11 @@
       if (detail) detail.hidden = !detail.hidden;
     });
 
-    document.getElementById('customerSearch').addEventListener('input', debounce(loadCustomers, 250));
+    const resetCustomerPage = () => loadCustomers(1, customersPerPage);
+    document.getElementById('customerSearch').addEventListener('input', debounce(resetCustomerPage, 250));
+    document.getElementById('customerFrom').addEventListener('change', resetCustomerPage);
+    document.getElementById('customerTo').addEventListener('change', resetCustomerPage);
+    document.getElementById('customerOrdersFilter').addEventListener('change', resetCustomerPage);
     loadCustomers();
   }
 })();
@@ -1590,8 +1902,11 @@
     c.products.forEach(p => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'order-type'; b.dataset.product = p.product_id;
+      const stock = Number(p.stock_qty);
+      b.disabled = stock < 1;
       b.setAttribute('role', 'radio');
-      b.innerHTML = `<strong>${esc(p.name)}</strong><small>${esc(p.description || p.blind_type)}</small>`;
+      b.innerHTML = `<strong>${esc(p.name)}</strong><small>${esc(p.description || p.blind_type)}</small>
+        <small data-stock-label class="${stock < 1 ? 'order-stock--out' : 'order-stock'}">${stock < 1 ? 'Out of stock' : `${stock} in stock`}</small>`;
       b.addEventListener('click', () => selectProduct(p.product_id));
       box.appendChild(b);
     });
@@ -1624,12 +1939,28 @@
     $('cWidth').value = 120; $('cHeight').value = 150; $('cQty').value = 1;
     $('cMaterial').selectedIndex = 0;
     setColor(state.catalog.colors[0].color_id);
-    selectProduct(state.catalog.products[0].product_id);
+    const available = state.catalog.products.find(p => Number(p.stock_qty) > 0);
+    if (available) {
+      selectProduct(available.product_id);
+    } else {
+      state.productId = 0;
+      document.querySelectorAll('#typeTiles .order-type').forEach(b => b.setAttribute('aria-checked', 'false'));
+      $('addItemBtn').disabled = true;
+      $('previewUnit').textContent = 'All blind types are currently out of stock.';
+    }
   }
 
   function selectProduct(id) {
+    const product = productById(id);
+    if (!product || Number(product.stock_qty) < 1) return;
     state.productId = +id;
     document.querySelectorAll('#typeTiles .order-type').forEach(b => b.setAttribute('aria-checked', String(+b.dataset.product === +id)));
+    const inCart = state.cart.filter(item => +item.product_id === +id).reduce((total, item) => total + Number(item.quantity), 0);
+    const available = Number(product.stock_qty) - inCart;
+    const remaining = Math.max(1, Math.min(state.catalog.limits.max_qty, available));
+    $('addItemBtn').disabled = available < 1;
+    $('cQty').max = remaining;
+    if (Number($('cQty').value) > remaining) $('cQty').value = remaining;
     updatePreview();
   }
 
@@ -1702,9 +2033,15 @@
 
     const est = estimate(sp);
     $('previewTotal').textContent = est ? money(est.total) : '₱0.00';
-    $('previewUnit').textContent = est
-      ? (sp.quantity > 1 ? `${money(est.unit)} each × ${sp.quantity}` : '')
-      : `Width and height must be ${L.min_cm}–${L.max_cm} cm; quantity 1–${L.max_qty}.`;
+    const inCart = state.cart.filter(item => +item.product_id === +sp.product_id).reduce((total, item) => total + Number(item.quantity), 0);
+    const remaining = Number(p.stock_qty) - inCart;
+    $('previewUnit').textContent = Number(p.stock_qty) < 1
+      ? 'Out of stock.'
+      : sp.quantity > remaining
+        ? `Only ${Math.max(0, remaining)} remaining in stock.`
+        : est
+          ? (sp.quantity > 1 ? `${money(est.unit)} each × ${sp.quantity}` : `${Number(p.stock_qty)} in stock`)
+          : `Width and height must be ${L.min_cm}–${L.max_cm} cm; quantity 1–${L.max_qty}.`;
   }
 
   /* ---------- Cart (blinds going into the order) ---------- */
@@ -1750,7 +2087,9 @@
   function quoteRow(it) {
     return `<tr>
       <td>${esc(it.product)}<br><small>${esc(it.material)} · ${esc(it.color)}</small></td>
-      <td>${esc(it.width_cm)} × ${esc(it.height_cm)}</td><td>${esc(it.quantity)}</td>
+      <td>${esc(it.width_cm)} × ${esc(it.height_cm)}</td><td>${esc(it.quantity)}
+        ${Number(it.stock_qty) < Number(it.quantity) ? `<br><small class="order-stock--out">${Number(it.stock_qty) < 1 ? 'Out of stock' : `Only ${Number(it.stock_qty)} in stock`}</small>` : ''}
+      </td>
       <td>${money(it.unit_price)}</td><td>${money(it.total_amount)}</td></tr>`;
   }
 
@@ -1759,9 +2098,11 @@
     $('quoteRef').textContent = `Quotation ${q.reference}`;
     $('quoteMeta').textContent = `Prepared for ${state.customer.full_name} on ${fmtDate(q.created_at)} · valid until ${fmtDate(q.valid_until)}`
       + (q.status === 'Ordered' ? ' · already ordered' : q.status === 'Expired' ? ' · expired' : '');
+    const unavailable = q.items.some(item => Number(item.stock_qty) < Number(item.quantity));
+    if (unavailable) $('quoteMeta').textContent += ' · one or more blinds are out of stock or have insufficient stock';
     $('quoteBody').innerHTML = q.items.map(quoteRow).join('');
     $('quoteTotal').textContent = money(q.total_amount);
-    $('quoteContinueBtn').disabled = q.status !== 'Active';
+    $('quoteContinueBtn').disabled = q.status !== 'Active' || unavailable;
   }
 
   // Review works from either a quotation (state.quote) or straight from the cart (no quotation).
@@ -1776,32 +2117,107 @@
     $('reviewRef').textContent = direct ? '' : `(${state.quote.reference})`;
     $('reviewBody').innerHTML = lines.map(it => `<tr>
       <td>${esc(it.product)}<br><small>${esc(it.material)} · ${esc(it.color)}</small></td>
-      <td>${esc(it.width_cm)} × ${esc(it.height_cm)}</td><td>${esc(it.quantity)}</td><td>${money(it.total_amount)}</td></tr>`).join('');
+      <td>${esc(it.width_cm)} × ${esc(it.height_cm)}</td><td>${esc(it.quantity)}
+        ${Number(it.stock_qty) < Number(it.quantity) ? `<br><small class="order-stock--out">${Number(it.stock_qty) < 1 ? 'Out of stock' : `Only ${Number(it.stock_qty)} in stock`}</small>` : ''}
+      </td><td>${money(it.total_amount)}</td></tr>`).join('');
     $('reviewTotal').textContent = money(total);
     $('reviewAccount').innerHTML = [['Name', c.full_name], ['Email', c.email], ['Contact', c.phone]]
       .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
     $('oAddress').value = c.address || '';
   }
 
+  async function refreshStockAvailability() {
+    const latest = await api('catalog.php');
+    if (!latest.success || !Array.isArray(latest.products)) {
+      throw new Error(latest.message || 'Could not refresh product availability. Please try again.');
+    }
+    const latestById = new Map(latest.products.map(product => [+product.product_id, Number(product.stock_qty)]));
+    state.catalog.products.forEach(product => {
+      product.stock_qty = latestById.get(+product.product_id) || 0;
+      const tile = document.querySelector(`#typeTiles [data-product="${product.product_id}"]`);
+      if (tile) {
+        tile.disabled = product.stock_qty < 1;
+        const label = tile.querySelector('[data-stock-label]');
+        label.textContent = product.stock_qty < 1 ? 'Out of stock' : `${product.stock_qty} in stock`;
+        label.className = product.stock_qty < 1 ? 'order-stock--out' : 'order-stock';
+      }
+    });
+    state.cart.forEach(item => {
+      const product = productById(item.product_id);
+      item.stock_qty = product ? Number(product.stock_qty) : 0;
+    });
+
+    const selected = productById(state.productId);
+    if (selected && Number(selected.stock_qty) > 0) {
+      selectProduct(selected.product_id);
+    } else {
+      const available = state.catalog.products.find(product => {
+        const inCart = state.cart.filter(item => +item.product_id === +product.product_id)
+          .reduce((total, item) => total + Number(item.quantity), 0);
+        return Number(product.stock_qty) > inCart;
+      });
+      if (available) selectProduct(available.product_id);
+      else {
+        state.productId = 0;
+        document.querySelectorAll('#typeTiles .order-type').forEach(button => button.setAttribute('aria-checked', 'false'));
+        $('addItemBtn').disabled = true;
+        $('previewUnit').textContent = state.catalog.products.some(product => Number(product.stock_qty) > 0)
+          ? 'No additional stock remains for the products in your order.'
+          : 'All blind types are currently out of stock.';
+      }
+    }
+  }
+
   /* ---------- Events ---------- */
-  $('customizeForm').addEventListener('submit', (e) => {
+  $('customizeForm').addEventListener('submit', async (e) => {
     e.preventDefault(); clearAlert();
     const sp = readSpec(), est = estimate(sp), L = state.catalog.limits;
-    if (!est) return showAlert(`Please enter a width and height of ${L.min_cm}–${L.max_cm} cm and a quantity of 1–${L.max_qty}.`);
-    if (state.cart.length >= L.max_items) return showAlert(`An order can have at most ${L.max_items} items.`);
-    state.cart.push({
-      ...sp, unit: est.unit, total: est.total,
-      product: productById(sp.product_id).name, material: materialById(sp.material_id).name, color: colorById(sp.color_id).name,
-    });
-    renderCart();
-    showAlert('Added. Add another blind, or place your order.', true);
-    $('cartCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const button = $('addItemBtn');
+    button.disabled = true;
+    try {
+      await refreshStockAvailability();
+      const product = productById(sp.product_id);
+      if (!product || Number(product.stock_qty) < 1) {
+        showAlert(`${product ? product.name : 'This blind'} is out of stock.`);
+        return;
+      }
+      const inCart = state.cart.filter(item => +item.product_id === +sp.product_id).reduce((total, item) => total + Number(item.quantity), 0);
+      if (inCart + sp.quantity > Number(product.stock_qty)) {
+        showAlert(`Only ${Math.max(0, Number(product.stock_qty) - inCart)} ${product.name} in stock.`);
+        return;
+      }
+      if (!est) {
+        showAlert(`Please enter a width and height of ${L.min_cm}–${L.max_cm} cm and a quantity of 1–${L.max_qty}.`);
+        return;
+      }
+      if (state.cart.length >= L.max_items) {
+        showAlert(`An order can have at most ${L.max_items} items.`);
+        return;
+      }
+      state.cart.push({
+        ...sp, unit: est.unit, total: est.total,
+        stock_qty: Number(product.stock_qty),
+        product: product.name, material: materialById(sp.material_id).name, color: colorById(sp.color_id).name,
+      });
+      renderCart();
+      selectProduct(product.product_id);
+      showAlert('Added. Add another blind, or place your order.', true);
+      $('cartCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (error) {
+      fail(error);
+    } finally {
+      const selected = productById(state.productId);
+      button.disabled = !selected || Number(selected.stock_qty) - state.cart
+        .filter(item => +item.product_id === +selected.product_id)
+        .reduce((total, item) => total + Number(item.quantity), 0) < 1;
+    }
   });
 
   $('cartBody').addEventListener('click', (e) => {
     const b = e.target.closest('[data-remove]'); if (!b) return;
     state.cart.splice(+b.dataset.remove, 1);
     renderCart();
+    if (state.productId) selectProduct(state.productId);
   });
 
   // Optional: place the order straight from the cart, skipping the quotation.

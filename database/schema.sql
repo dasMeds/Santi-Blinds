@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS orders (
   status       VARCHAR(30) NOT NULL DEFAULT 'Pending',
   order_date   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_orders_order (order_id),
+  INDEX idx_orders_customer_date (customer_id, order_date),
   INDEX idx_orders_status (status),
   INDEX idx_orders_quotation (quotation_id),
   FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
@@ -177,6 +178,117 @@ CREATE TABLE IF NOT EXISTS inquiry (
   FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
   FOREIGN KEY (product_id) REFERENCES product(product_id)
 ) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- ORDER INVENTORY AUTOMATION
+-- Active order lines reserve stock. Cancelled/canceled order lines
+-- do not; stock is restored when an active line is canceled/deleted.
+-- InnoDB runs trigger updates as part of the originating statement.
+-- ------------------------------------------------------------
+DROP TRIGGER IF EXISTS orders_inventory_before_insert;
+DROP TRIGGER IF EXISTS orders_inventory_before_update;
+DROP TRIGGER IF EXISTS orders_inventory_before_delete;
+
+DELIMITER $$
+
+CREATE TRIGGER orders_inventory_before_insert
+BEFORE INSERT ON orders
+FOR EACH ROW
+BEGIN
+  IF NEW.quantity <= 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Order quantity must be greater than zero';
+  END IF;
+
+  IF LOWER(TRIM(NEW.status)) NOT IN ('cancelled', 'canceled') THEN
+    UPDATE product
+    SET stock_qty = stock_qty - NEW.quantity
+    WHERE product_id = NEW.product_id
+      AND stock_qty >= NEW.quantity;
+
+    IF ROW_COUNT() = 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Insufficient inventory for order';
+    END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER orders_inventory_before_update
+BEFORE UPDATE ON orders
+FOR EACH ROW
+BEGIN
+  DECLARE old_is_active BOOLEAN;
+  DECLARE new_is_active BOOLEAN;
+
+  IF NEW.quantity <= 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Order quantity must be greater than zero';
+  END IF;
+
+  SET old_is_active = LOWER(TRIM(OLD.status)) NOT IN ('cancelled', 'canceled');
+  SET new_is_active = LOWER(TRIM(NEW.status)) NOT IN ('cancelled', 'canceled');
+
+  IF old_is_active AND new_is_active THEN
+    IF OLD.product_id = NEW.product_id THEN
+      IF NEW.quantity > OLD.quantity THEN
+        UPDATE product
+        SET stock_qty = stock_qty - (NEW.quantity - OLD.quantity)
+        WHERE product_id = NEW.product_id
+          AND stock_qty >= (NEW.quantity - OLD.quantity);
+
+        IF ROW_COUNT() = 0 THEN
+          SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Insufficient inventory for order update';
+        END IF;
+      ELSEIF NEW.quantity < OLD.quantity THEN
+        UPDATE product
+        SET stock_qty = stock_qty + (OLD.quantity - NEW.quantity)
+        WHERE product_id = OLD.product_id;
+      END IF;
+    ELSE
+      UPDATE product
+      SET stock_qty = stock_qty + OLD.quantity
+      WHERE product_id = OLD.product_id;
+
+      UPDATE product
+      SET stock_qty = stock_qty - NEW.quantity
+      WHERE product_id = NEW.product_id
+        AND stock_qty >= NEW.quantity;
+
+      IF ROW_COUNT() = 0 THEN
+        SIGNAL SQLSTATE '45000'
+          SET MESSAGE_TEXT = 'Insufficient inventory for order update';
+      END IF;
+    END IF;
+  ELSEIF old_is_active AND NOT new_is_active THEN
+    UPDATE product
+    SET stock_qty = stock_qty + OLD.quantity
+    WHERE product_id = OLD.product_id;
+  ELSEIF NOT old_is_active AND new_is_active THEN
+    UPDATE product
+    SET stock_qty = stock_qty - NEW.quantity
+    WHERE product_id = NEW.product_id
+      AND stock_qty >= NEW.quantity;
+
+    IF ROW_COUNT() = 0 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Insufficient inventory for order update';
+    END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER orders_inventory_before_delete
+BEFORE DELETE ON orders
+FOR EACH ROW
+BEGIN
+  IF LOWER(TRIM(OLD.status)) NOT IN ('cancelled', 'canceled') THEN
+    UPDATE product
+    SET stock_qty = stock_qty + OLD.quantity
+    WHERE product_id = OLD.product_id;
+  END IF;
+END$$
+
+DELIMITER ;
 
 -- ------------------------------------------------------------
 -- STARTER DATA
