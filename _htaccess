@@ -1,0 +1,5 @@
+# Block direct browser access to config + SQL files (PHP can still include them).
+<FilesMatch "^(db_config\.php|crypto_lib\.php|catalog_lib\.php|.*\.sql|.*\.key|keys\.txt|SETUP\.md|ENCRYPTION\.md)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes

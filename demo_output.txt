@@ -1,0 +1,96 @@
+
+══════════════════════════════════════════════════════════════════════════════
+  1. BEFORE - how the data is stored today (plaintext)
+══════════════════════════════════════════════════════════════════════════════
+  What phpMyAdmin, a stolen backup (.sql / DB file) or an SQL-injection dump shows:
+
+  id | fname  | lname   | email                      | phone         | location   
+  ---+--------+---------+----------------------------+---------------+------------
+  1  | Maria  | Santos  | maria.santos@example.com   | 0917 123 4567 | Makati City
+  2  | James  | Reyes   | james.reyes@example.com    | 0918 234 5678 | BGC, Taguig
+  3  | Claire | Mendoza | claire.mendoza@example.com | 0919 345 6789 | Quezon City
+
+  order_id | delivery_address                     
+  ---------+--------------------------------------
+  1        | Unit 12B, 88 Aurora Blvd, Quezon City
+
+  Searching the raw database file for 'maria.santos@example.com': FOUND
+  Searching the raw database file for '88 Aurora Blvd':           FOUND
+
+══════════════════════════════════════════════════════════════════════════════
+  2. ENCRYPT - same logic as tools/encrypt_existing_data.php
+══════════════════════════════════════════════════════════════════════════════
+  Master key: 32 random bytes held OUTSIDE the database and web root (never printed here).
+  Per-value: random IV + AES-256-GCM, column name bound as authenticated data.
+
+
+══════════════════════════════════════════════════════════════════════════════
+  3. AFTER - what an attacker with the database (but not the key) sees
+══════════════════════════════════════════════════════════════════════════════
+  id | fname                                           | lname                                           | email                                           | phone                                           | location                                       
+  ---+-------------------------------------------------+-------------------------------------------------+-------------------------------------------------+-------------------------------------------------+------------------------------------------------
+  1  | ENC1.k1.kfTMAPbW7fG5H8DoFqculUcD7GcDegcUwE7Y/n… | ENC1.k1.L2jsW0StLD169V72h1qTPafmp2jXOT8pq9a5mo… | ENC1.k1.MluhSqtyJbUTSjvzdCqObZlJ1pYqxFrShQxr5w… | ENC1.k1.WxoCflgTAe3f6Gcs8rFeP6Q/87BKxGIDflWsgl… | ENC1.k1.EDzIYkDh470aVBFDbGKPW+6YYK1U8WRYV/Anlf…
+  2  | ENC1.k1.tNfX63aMuiOpy2r9CN/OEL9NarKGQSpGQYkAEF… | ENC1.k1.IvyIJ1R/SRcoGol2A2idsmfMNhrH6uN6/unZLg… | ENC1.k1.FjdEZjkB5sHt+yB5uEl7iBMaZ5tqi8UZ/fxbxi… | ENC1.k1.NC+IirThN6EeTGzx701uulSbBSEfg9AFOGVQUi… | ENC1.k1.wvXcjYjQz8LFKHg4Alf72HRwLDln4M1QcuMPqW…
+  3  | ENC1.k1.SKMtEFfW0+K7NHL2/rKWp92O23X4+XypuezaEH… | ENC1.k1./oNppCNSDHWd3vmMAFDYaZSuzya7EFvE65usFK… | ENC1.k1.mZF021wd5DMc+mhR0dl+ezQYSyMrnQmlzoyxsF… | ENC1.k1.4K/wYaocHrnTmgy8BlqyNWObjxntFCqhAPWIuU… | ENC1.k1.lnYBgqE//OTSdaT7Sp71jZS9MsYtaatYpjyxup…
+
+  id | email_bidx                                     
+  ---+------------------------------------------------
+  1  | d2fc326e39f0fc3edd2647cf383e04b1adada60689b214…
+  2  | 8b7884a69939504f36b17bc710fd2c5785ad42159fac2b…
+  3  | 62d004c700080628b9943190b4f5177bfc8ee43f3855b7…
+
+  order_id | delivery_address                               
+  ---------+------------------------------------------------
+  1        | ENC1.k1.6VZ+WvHSW1VjsqCzgXSSR9HDZCiWE8W3Ka3GWK…
+
+  Raw file search for 'maria.santos@example.com': not found
+  Raw file search for '88 Aurora Blvd':           not found
+  SQL injection style query  WHERE phone LIKE '%0917%'            -> 0 rows
+  SQL injection style query  WHERE email = 'maria.santos@...'     -> 0 rows
+
+══════════════════════════════════════════════════════════════════════════════
+  4. AUTHORISED APPLICATION - has the key, so it can read the data
+══════════════════════════════════════════════════════════════════════════════
+  #1: Maria Santos | maria.santos@example.com | 0917 123 4567 | Makati City
+  #2: James Reyes | james.reyes@example.com | 0918 234 5678 | BGC, Taguig
+  #3: Claire Mendoza | claire.mendoza@example.com | 0919 345 6789 | Quezon City
+
+══════════════════════════════════════════════════════════════════════════════
+  5. RANDOMISED ENCRYPTION - identical values do not look identical
+══════════════════════════════════════════════════════════════════════════════
+  encrypt('0917 123 4567') #1: ENC1.k1.XioXA0+jVkfMgCRojZUMmncbRL0ejPOUdSkTCGoHxDcaoQY+3gLH…
+  encrypt('0917 123 4567') #2: ENC1.k1.hPLcaUXH4pqdHlMn8wm+ZVxwY5332pTz6z5bgvE5fX0v/POg6wyo…
+  Same ciphertext? False   Both decrypt to the same phone? True
+  -> an attacker cannot tell which customers share a phone/city, nor spot repeated values.
+
+══════════════════════════════════════════════════════════════════════════════
+  6. BLIND INDEX - looking up a customer (login) without decrypting the table
+══════════════════════════════════════════════════════════════════════════════
+  Login lookup for '  Maria.Santos@Example.com ' (case/space-insensitive) -> customer id 1
+  Same e-mail indexed with a different key -> f684ca9e498641e52da21928… (no match)
+  -> only someone holding the key can compute the index, so e-mails cannot be guessed offline.
+
+══════════════════════════════════════════════════════════════════════════════
+  7. INTEGRITY - tampering is detected (GCM authentication tag)
+══════════════════════════════════════════════════════════════════════════════
+  Flipped ONE bit of the stored phone ciphertext -> decryption REFUSED (InvalidTag)
+
+══════════════════════════════════════════════════════════════════════════════
+  8. CONTEXT BINDING - ciphertext cannot be moved to another column
+══════════════════════════════════════════════════════════════════════════════
+  phone ciphertext pasted into the e-mail column -> decryption REFUSED
+  -> stops an attacker with write access from swapping values between rows/columns.
+
+══════════════════════════════════════════════════════════════════════════════
+  9. WRONG KEY - the stolen database alone is useless
+══════════════════════════════════════════════════════════════════════════════
+  Attacker guesses/generates another key -> decryption REFUSED (no partial plaintext)
+
+══════════════════════════════════════════════════════════════════════════════
+  10. KEY ROTATION - new key for new writes, old data still readable
+══════════════════════════════════════════════════════════════════════════════
+  before: ENC1.k1.WxoCflgTAe3f6Gcs8rFeP6…
+  after : ENC1.k2.BIAYyMu52sWi/+r12ZgA56…   (re-encrypted under k2; blind index recomputed too)
+  both decrypt to: 0917 123 4567 / 0917 123 4567
+
+Done. (Temp DB: /tmp/tmpp56ve1od/santiblinds_demo.db )

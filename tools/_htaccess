@@ -1,0 +1,2 @@
+# No browser access to maintenance tools.
+Require all denied
