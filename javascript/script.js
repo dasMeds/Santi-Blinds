@@ -41,6 +41,96 @@
 })();
 
 
+/* ---- ACCOUNT MENU (nav) ----
+   Facebook-style account dropdown: avatar button -> name card, "View Orders", "Log out".
+   Shows a "Log in" button when nobody is signed in. The order page announces
+   login/logout through the 'santi:auth' event so the menu stays in sync. */
+(function initAccountMenu() {
+  const host = document.getElementById('navAccount');
+  if (!host) return;
+
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const initials = (name) => {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  };
+
+  const ICON_ORDERS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></svg>';
+  const ICON_LOGOUT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9"/></svg>';
+
+  let customer = null;
+
+  function close() {
+    const menu = host.querySelector('.acct__menu');
+    const btn = host.querySelector('.acct__btn');
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function render() {
+    if (!customer) {
+      host.innerHTML = '<a href="order.html" class="nav__login">Log in</a>';
+      return;
+    }
+    const name = esc(customer.full_name);
+    host.innerHTML = `
+      <button type="button" class="acct__btn" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu for ${name}">
+        <span class="acct__avatar">${esc(initials(customer.full_name))}</span>
+      </button>
+      <div class="acct__menu" role="menu" hidden>
+        <div class="acct__card">
+          <span class="acct__avatar acct__avatar--lg">${esc(initials(customer.full_name))}</span>
+          <span class="acct__who"><strong>${name}</strong><small>${esc(customer.email)}</small></span>
+        </div>
+        <a href="my-orders.html" class="acct__item" role="menuitem">
+          <span class="acct__icon">${ICON_ORDERS}</span><span>View Orders</span>
+        </a>
+        <button type="button" class="acct__item" role="menuitem" data-acct-logout>
+          <span class="acct__icon">${ICON_LOGOUT}</span><span>Log out</span>
+        </button>
+      </div>`;
+  }
+
+  async function logout() {
+    try {
+      await fetch('portal/customer_logout.php', { method: 'POST', credentials: 'include' });
+    } catch (_) { /* leave the page either way */ }
+    customer = null;
+    // Pages that depend on the session start over; everything else just updates the nav.
+    if (document.getElementById('ordersApp')) { window.location.href = 'order.html'; return; }
+    if (document.getElementById('orderApp')) { window.location.reload(); return; }
+    render();
+  }
+
+  host.addEventListener('click', (e) => {
+    if (e.target.closest('[data-acct-logout]')) { logout(); return; }
+    const btn = e.target.closest('.acct__btn');
+    if (btn) {
+      const menu = host.querySelector('.acct__menu');
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    }
+  });
+  document.addEventListener('click', (e) => { if (!host.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { close(); const b = host.querySelector('.acct__btn'); if (b) b.focus(); }
+  });
+  window.addEventListener('santi:auth', (e) => {
+    customer = (e.detail && e.detail.customer) || null;
+    render();
+  });
+
+  render();   // "Log in" until we know better, so the nav never jumps around empty
+  fetch('portal/customer_session.php', { credentials: 'include' })
+    .then(r => r.json())
+    .then(d => { customer = d && d.success && d.logged_in ? d.customer : null; render(); })
+    .catch(() => { /* server unreachable: keep the "Log in" link */ });
+})();
+
+
 /* ---- SCROLL REVEAL ---- */
 (function initReveal() {
   const elements = document.querySelectorAll('.reveal');
@@ -1963,14 +2053,18 @@
   }
 
   function sessionEnded() {
-    state.customer = null; state.quote = null;
+    state.customer = null; state.quote = null; announceAuth(null);
     renderUser(); showAuth('login'); go('auth');
     showAlert('Your session has ended. Please log in again.');
   }
 
+  // Keeps the nav account menu in sync with this page's login state.
+  const announceAuth = (customer) => window.dispatchEvent(new CustomEvent('santi:auth', { detail: { customer } }));
+
   async function startSession(customer) {
     state.customer = customer;
     renderUser();
+    announceAuth(customer);
     go('customize');
     loadSavedQuotes();
   }
@@ -2023,7 +2117,7 @@
   $('customerLogoutBtn').addEventListener('click', async () => {
     clearAlert();
     try { await api('customer_logout.php', {}); } catch (_) { /* log out locally either way */ }
-    state.customer = null; state.quote = null; state.cart = [];
+    state.customer = null; state.quote = null; state.cart = []; announceAuth(null);
     renderCart(); renderSavedQuotes([]); renderUser(); showAuth('login'); go('auth');
     showAlert('You have been logged out.', true);
   });
@@ -2647,6 +2741,134 @@
       else { showAuth('login'); go('auth'); }
     } catch (err) {
       showAlert((err && err.message) || 'Could not reach the server. Is Apache running? Open this page through http://localhost/…');
+    }
+  })();
+})();
+
+
+/* ============================================================
+   MY ORDERS (my-orders.html)
+   Lists the signed-in customer's orders and tracks each one
+   (Pending > Processing > Completed) using portal/my_orders.php.
+   ============================================================ */
+(function initMyOrders() {
+  const app = document.getElementById('ordersApp');
+  if (!app) return;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const money = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDate = (v) => {
+    const d = new Date(String(v || '').replace(' ', 'T'));
+    return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+  const cm = (n) => (Math.round(Number(n) * 10) / 10) + ' cm';
+
+  const STATUS_NOTE = {
+    Pending:    'We have received your order and will confirm it shortly.',
+    Processing: 'Your blinds are being prepared.',
+    Completed:  'Your order is complete. Thank you for choosing Santi Blinds!',
+    Cancelled:  'This order was cancelled.',
+  };
+  const FILTERS = {
+    all:        () => true,
+    active:     (o) => o.status === 'Pending' || o.status === 'Processing',
+    Completed:  (o) => o.status === 'Completed',
+    Cancelled:  (o) => o.status === 'Cancelled',
+  };
+
+  const state = { orders: [], filter: 'all', open: new Set() };
+
+  function showAlert(msg) { const el = $('ordersAlert'); el.textContent = msg; el.hidden = false; }
+
+  function timeline(o) {
+    if (o.tracking.cancelled) {
+      return '<p class="acct-cancelled">This order was cancelled.</p>';
+    }
+    return '<ol class="acct-track" aria-label="Order progress">' + o.tracking.steps.map(s =>
+      `<li class="is-${esc(s.state)}"${s.state === 'current' ? ' aria-current="step"' : ''}><span>${esc(s.label)}</span></li>`
+    ).join('') + '</ol>';
+  }
+
+  function card(o) {
+    const open = state.open.has(o.order_id);
+    const items = o.items.map(i => `<tr>
+        <td><strong>${esc(i.product)}</strong><small>${esc(i.material)} · ${esc(i.color)}</small></td>
+        <td>${esc(cm(i.width_cm))} × ${esc(cm(i.height_cm))}</td>
+        <td>${esc(i.quantity)}</td>
+        <td>${money(i.total_amount)}</td></tr>`).join('');
+    return `<article class="acct-order" data-order="${esc(o.order_id)}">
+      <header class="acct-order__head">
+        <div>
+          <h2 class="acct-order__ref">${esc(o.reference)}</h2>
+          <p class="acct-order__meta">Placed ${esc(fmtDate(o.order_date))} · ${esc(o.item_count)} ${o.item_count === 1 ? 'item' : 'items'}</p>
+        </div>
+        <span class="acct-badge acct-badge--${esc(o.status.toLowerCase())}">${esc(o.status)}</span>
+        <strong class="acct-order__total">${money(o.total_amount)}</strong>
+        <button type="button" class="btn btn--ghost acct-order__toggle" data-toggle="${esc(o.order_id)}"
+                aria-expanded="${open}" aria-controls="order-detail-${esc(o.order_id)}">${open ? 'Hide details' : 'Track order'}</button>
+      </header>
+      <div class="acct-order__detail" id="order-detail-${esc(o.order_id)}"${open ? '' : ' hidden'}>
+        ${timeline(o)}
+        <p class="acct-note">${esc(STATUS_NOTE[o.status] || '')}</p>
+        <div class="acct-table-wrap">
+          <table class="acct-table">
+            <thead><tr><th>Item</th><th>Size</th><th>Qty</th><th>Amount</th></tr></thead>
+            <tbody>${items}</tbody>
+            <tfoot><tr><td colspan="3">Total</td><td>${money(o.total_amount)}</td></tr></tfoot>
+          </table>
+        </div>
+        ${o.quotation ? `<p class="acct-note">From quotation ${esc(o.quotation)}</p>` : ''}
+      </div>
+    </article>`;
+  }
+
+  function render() {
+    const list = state.orders.filter(FILTERS[state.filter]);
+    $('ordersList').innerHTML = list.map(card).join('');
+    $('ordersEmpty').hidden = list.length > 0;
+    $('ordersEmpty').textContent = state.orders.length
+      ? 'No orders match this filter.'
+      : "You haven't placed any orders yet.";
+    document.querySelectorAll('[data-filter]').forEach(b => {
+      const on = b.dataset.filter === state.filter;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  document.querySelector('.acct-filters').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-filter]'); if (!b) return;
+    state.filter = b.dataset.filter; render();
+  });
+  $('ordersList').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-toggle]'); if (!b) return;
+    const id = +b.dataset.toggle;
+    state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+    render();
+    const again = document.querySelector(`[data-toggle="${id}"]`); if (again) again.focus();
+  });
+
+  (async function load() {
+    try {
+      const res = await fetch('portal/my_orders.php', { credentials: 'include' });
+      if (res.status === 401) { $('ordersLoading').hidden = true; $('ordersGate').hidden = false; return; }
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Could not load your orders.');
+      state.orders = data.orders;
+
+      // Open the order named in the link (?order=12), else the newest one.
+      const wanted = +new URLSearchParams(location.search).get('order');
+      const pick = state.orders.find(o => o.order_id === wanted) || state.orders[0];
+      if (pick) state.open.add(pick.order_id);
+
+      $('ordersLoading').hidden = true;
+      $('ordersBody').hidden = false;
+      render();
+    } catch (err) {
+      $('ordersLoading').hidden = true;
+      showAlert((err && err.message) || 'Could not reach the server. Please try again.');
     }
   })();
 })();
