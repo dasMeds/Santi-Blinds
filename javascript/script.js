@@ -808,7 +808,8 @@
           const field = document.getElementById(toggle.dataset.passwordToggle);
           if (!field) return;
           field.type = 'password';
-          toggle.textContent = 'Show password';
+          toggle.setAttribute('aria-label', 'Show password');
+          toggle.title = 'Show password';
           toggle.setAttribute('aria-pressed', 'false');
         });
       });
@@ -817,7 +818,8 @@
       if (!input) return;
       const visible = input.type === 'password';
       input.type = visible ? 'text' : 'password';
-      button.textContent = visible ? 'Hide password' : 'Show password';
+      button.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+      button.title = visible ? 'Hide password' : 'Show password';
       button.setAttribute('aria-pressed', String(visible));
     });
   });

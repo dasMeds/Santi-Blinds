@@ -73,8 +73,12 @@
           <div class="form-group"><label for="lEmail">Email</label><input type="email" id="lEmail" autocomplete="username" required /></div>
           <div class="form-group">
             <label for="lPassword">Password</label>
-            <input type="password" id="lPassword" autocomplete="current-password" required />
-            <button type="button" class="password-toggle" data-password-toggle="lPassword" aria-pressed="false">Show password</button>
+            <div class="password-field">
+              <input type="password" id="lPassword" autocomplete="current-password" required />
+              <button type="button" class="password-toggle" data-password-toggle="lPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path class="password-eye__outline" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye__slash" d="m3 3 18 18"/></svg>
+              </button>
+            </div>
           </div>
           <button type="submit" class="btn btn--primary btn--full" id="loginBtn">Log In</button>
           <p class="order-switch">New to Santi Blinds? <button type="button" class="order-link" id="showRegisterBtn">Create an account</button></p>
@@ -90,13 +94,21 @@
           <div class="form-row">
             <div class="form-group">
               <label for="rPassword">Password <span class="order-opt">(8+ characters)</span></label>
-              <input type="password" id="rPassword" autocomplete="new-password" minlength="8" required />
-              <button type="button" class="password-toggle" data-password-toggle="rPassword" aria-pressed="false">Show password</button>
+              <div class="password-field">
+                <input type="password" id="rPassword" autocomplete="new-password" minlength="8" required />
+                <button type="button" class="password-toggle" data-password-toggle="rPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="password-eye__outline" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye__slash" d="m3 3 18 18"/></svg>
+                </button>
+              </div>
             </div>
             <div class="form-group">
               <label for="rConfirm">Confirm password</label>
-              <input type="password" id="rConfirm" autocomplete="new-password" required />
-              <button type="button" class="password-toggle" data-password-toggle="rConfirm" aria-pressed="false">Show password</button>
+              <div class="password-field">
+                <input type="password" id="rConfirm" autocomplete="new-password" required />
+                <button type="button" class="password-toggle" data-password-toggle="rConfirm" aria-label="Show password" aria-pressed="false" title="Show password">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="password-eye__outline" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye__slash" d="m3 3 18 18"/></svg>
+                </button>
+              </div>
             </div>
           </div>
           <div class="form-check">

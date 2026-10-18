@@ -4329,7 +4329,12 @@ ul { list-style: none; }
 .order-receipt { max-width: 100%; }
 .order-receipt .order-spec { grid-template-columns: auto 1fr; }
 .order-receipt .order-history { margin-top: 1rem; padding-top: 0; border-top: 0; }
-.password-toggle { display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0; border: 0; background: transparent; color: var(--c-tan); font: inherit; font-size: 0.8rem; cursor: pointer; }
+.password-field { position: relative; }
+.password-field input { padding-right: 3rem; }
+.password-toggle { position: absolute; top: 50%; right: 0.75rem; display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; transform: translateY(-50%); border: 0; background: transparent; color: var(--c-tan); cursor: pointer; }
+.password-toggle svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.password-toggle .password-eye__slash { display: none; }
+.password-toggle[aria-pressed="true"] .password-eye__slash { display: block; }
 .password-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .order-choice { display: grid; gap: 0.75rem; margin-bottom: 1.25rem; }
 .order-choice__opt { display: flex; gap: 0.75rem; align-items: flex-start; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; }
