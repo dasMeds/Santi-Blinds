@@ -885,8 +885,8 @@
   }
   const badge = s => `<span class="admin-badge ${statusBadgeClass(s)}">${esc(s)}</span>`;
 
-  function statCard(label, value) {
-    return `<div class="admin-stat-card"><span class="admin-stat-card__label">${label}</span><span class="admin-stat-card__value">${value}</span></div>`;
+  function statCard(label, value, extraClass = '') {
+    return `<div class="admin-stat-card${extraClass ? ' ' + extraClass : ''}"><span class="admin-stat-card__label">${label}</span><span class="admin-stat-card__value">${value}</span></div>`;
   }
   function emptyRow(cols, msg) {
     return `<tr><td colspan="${cols}" class="admin-empty">${esc(msg || 'No data yet.')}</td></tr>`;
@@ -1030,18 +1030,37 @@
   // ---------- admin-dashboard.html ----------
   const dashboardStats = document.getElementById('dashboardStats');
   if (dashboardStats) {
+    dashboardStats.classList.add('admin-stats--dashboard');
     (async () => {
       const data = await adminApiGet('dashboard.php');
       if (!data || !data.success) return;
 
       const s = data.stats;
+      let topSellerData = null;
+      try {
+        topSellerData = await adminApiGet('best_sellers.php');
+      } catch (error) {
+        console.error('Could not load dashboard best seller:', error);
+      }
+      const topSeller = topSellerData && topSellerData.success && topSellerData.products && topSellerData.products[0];
+      const topSellerLabel = topSeller
+        ? `${esc(topSeller.product)} · ${Number(topSeller.units)} sold`
+        : topSellerData && topSellerData.success ? 'No sales yet' : 'Unavailable';
+
       dashboardStats.innerHTML = `
-        ${statCard('Total Orders', s.total_orders)}
-        ${statCard('Pending Orders', s.pending_orders)}
-        ${statCard('Total Customers', s.total_customers)}
-        ${statCard('Revenue (This Month)', money(s.revenue_this_month))}
-        ${statCard('Revenue (All Time)', money(s.revenue_total))}
-        ${statCard('Low-Stock Products', s.low_stock_items)}
+        <div class="admin-dashboard-highlights">
+          ${statCard('Revenue (All Time)', money(s.revenue_total), 'admin-dashboard-hero')}
+          <div class="admin-dashboard-side">
+            ${statCard('Revenue (This Month)', money(s.revenue_this_month))}
+            ${statCard('Top Seller', topSellerLabel)}
+          </div>
+        </div>
+        <div class="admin-dashboard-secondary">
+          ${statCard('Total Orders', s.total_orders)}
+          ${statCard('Pending Orders', s.pending_orders)}
+          ${statCard('Total Customers', s.total_customers)}
+          ${statCard('Low-Stock Products', s.low_stock_items)}
+        </div>
       `;
 
       const recent = document.querySelector('#recentOrdersTable tbody');
@@ -1487,9 +1506,31 @@
       const data = await adminApiGet('best_sellers.php');
       if (!data) return;
       const bestSellersBody = document.querySelector('#bestSellersTable tbody');
+      const stats = document.getElementById('reportStats');
       if (!data.success) {
         bestSellersBody.innerHTML = emptyRow(4, data.message || 'Could not load best-selling report.');
+        if (stats) {
+          const existing = stats.querySelector('[data-top-seller]');
+          if (existing) existing.remove();
+        }
         return;
+      }
+      const topProduct = data.products[0];
+      if (stats) {
+        let topSellerCard = stats.querySelector('[data-top-seller]');
+        const cardHtml = topProduct
+          ? `
+            <div class="admin-stat-card" data-top-seller>
+              <span class="admin-stat-card__label">Top Seller</span>
+              <span class="admin-stat-card__value">${esc(topProduct.product)}</span>
+            </div>
+          `
+          : '<div class="admin-stat-card" data-top-seller><span class="admin-stat-card__label">Top Seller</span><span class="admin-stat-card__value">No sales yet</span></div>';
+        if (topSellerCard) {
+          topSellerCard.outerHTML = cardHtml;
+        } else {
+          stats.insertAdjacentHTML('beforeend', cardHtml);
+        }
       }
       bestSellersBody.innerHTML = data.products.length
         ? data.products.map((product, index) => `
@@ -1539,7 +1580,6 @@
       }
     }
 
-    document.getElementById('runReportBtn').addEventListener('click', loadReport);
     const resetReportPage = () => loadReport(1, reportsPerPage);
     reportStatusFilter.addEventListener('change', resetReportPage);
     reportSearch.addEventListener('input', debounce(resetReportPage, 250));
