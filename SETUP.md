@@ -1,136 +1,226 @@
-# Santi Blinds — running the site + admin panel on XAMPP
+# Santi Blinds setup guide
 
-## 1. Put the project in htdocs
-Extract this folder to `C:\xampp\htdocs\santiblinds\`:
+This guide reflects the current repository layout and the setup steps that match the code in this project.
 
-```
-htdocs/santiblinds/
-├── index.html, about.html, contact.html, gallery.html, process.html, products.html
-├── order.html               <-- NEW: register / login / customize / quote / order
-├── css/style.css
-├── javascript/script.js
-├── images/                  <-- COPY YOUR images folder contents here
-├── video/                   <-- COPY YOUR video folder here (Demoreel.mp4)
-├── db_config.php            <-- DB + Gmail settings + encryption key location
-├── crypto_lib.php           <-- NEW: AES-256-GCM field encryption (loaded by db_config.php)
-├── enquiries.php            <-- contact-form handler
-├── create_admin.php         <-- run once, then DELETE
-├── .htaccess                <-- blocks browser access to db_config.php / .sql files
-├── PHPMailer/src/*.php
-├── portal/                  <-- NEW: customer API used by order.html (11 files)
-│   └── config.php, catalog_lib.php, catalog.php, register.php, login.php, logout.php,
-│       me.php, customization.php, quotation.php, order.php
-├── database/                <-- schema.sql, migrate_encryption.sql, sample_data.sql (don't upload to live site)
-├── tools/                   <-- NEW: generate_key.php, encrypt_existing_data.php, encryption_demo.php (CLI only)
-└── admin/
-    ├── admin-login.html, admin-dashboard.html, ... (9 pages; NEW: admin-customizations)
-    └── api/                 <-- config.php, login.php, orders.php, ... (14 files; NEW:
-                                 customizations.php, quotations.php, activity.php)
+## 1. Requirements
+
+Use a local Apache + MySQL stack such as XAMPP.
+
+Recommended:
+
+- Apache running on port 80
+- MySQL running on localhost
+- PHP 8.0+
+- Git (optional, for pulling updates)
+
+Place the project in the web root, for example:
+
+```text
+C:\xampp\htdocs\santiblinds\
 ```
 
-Keep that exact nesting: the admin pages call `./api/...` and `api/config.php`
-loads `../../db_config.php`. Likewise `portal/config.php` loads `../db_config.php`.
+The project expects to be served through `http://localhost/...` and not opened directly from disk.
 
-Images the pages expect in `images/`: Icon.png, SantiLogoNoBg.png, Dinna.png,
-Romano.png, Adrian.png, Product_1..6.png, and 1..14.png. Video: `video/Demoreel.mp4`.
+## 2. Project layout
 
-## 2. Start XAMPP
-In the XAMPP Control Panel start **Apache** and **MySQL**.
-Use PHP 8.0 or newer (current XAMPP versions are fine).
+This repository contains both the public storefront and the internal admin tooling:
+
+- `index.html`, `about.html`, `products.html`, `gallery.html`, `process.html`, `order.html`, `contact.html` for the public website
+- `portal/` for customer registration, login, customizations, quotations, and order endpoints
+- `admin/` for the admin UI and API endpoints
+- `database/` for schema and migration SQL scripts
+- `tools/` for encryption key generation and data migration utilities
+- `db_config.php` for database, mail, and encryption settings
+
+The root `.htaccess` denies direct browser access to `db_config.php`, SQL files, and some documentation files.
 
 ## 3. Create the database
-1. Open http://localhost/phpmyadmin
-2. **Import** -> choose `database/schema.sql` -> **Import** (creates `santiblinds` + 11 tables).
-   **Upgrading an existing database?** Import the new `schema.sql` again. It only adds the
-   5 new tables (`customer_accounts`, `customizations`, `quotations`, `order_details`,
-   `customer_activity`) and never touches your data.
-3. *(Optional demo data)* Import `database/sample_data.sql` the same way.
 
-**Upgrading an existing database for the merged order statuses?** Back up your
-database, then import `database/migrate_ready_status.sql` once. This changes
-existing `Ready` and `Ready for Install` order lines to `Completed`.
+1. Start Apache and MySQL in XAMPP.
+2. Open `http://localhost/phpmyadmin`.
+3. Create a database named `santiblinds` if needed.
+4. Import `database/schema.sql`.
+5. Optional: import `database/sample_data.sql` for starter content.
 
-`db_config.php` already matches XAMPP defaults (`root`, empty password).
+Before importing, make sure the database does not already contain an older version of the same app unless you intend to upgrade it.
 
-## 3b. Turn on database encryption (required)
-Names, e-mails, phone numbers, addresses, notes and IP addresses are stored AES-256-GCM
-encrypted (details: `ENCRYPTION.md`). The app will not work without a key.
+### Upgrade notes
 
-1. **Generate the key.** From a terminal in the project folder:
-   ```
-   C:\xampp\php\php.exe tools\generate_key.php
-   ```
-   This writes `C:\xampp\santiblinds_keys\keys.txt` (outside `htdocs`, see `ENC_KEY_FILE`
-   in `db_config.php`). **Back this file up somewhere separate from the database.**
-   If it is lost, the encrypted data cannot be recovered.
-2. **Existing database from before encryption?** Back it up, import
-   `database/migrate_encryption.sql` once, then encrypt the old rows:
-   ```
-   C:\xampp\php\php.exe tools\encrypt_existing_data.php
-   ```
-   Fresh install: `schema.sql` already has the right columns. If you also import
-   `sample_data.sql`, run `encrypt_existing_data.php` afterwards.
-3. In `db_config.php` set `ENC_ALLOW_LEGACY_PLAINTEXT` to `false` once step 2 is done.
-4. See it working: `C:\xampp\php\php.exe tools\encryption_demo.php --db`
+- `database/migrate_ready_status.sql` converts legacy order statuses into the newer completed state.
+- `database/migrate_encryption.sql` adds the encryption-related columns and indexes needed for the customer data protection layer.
 
-`db_config.php` now reads `SANTI_DB_USER`, `SANTI_DB_PASS` and the Gmail settings from
-environment variables when they exist (XAMPP defaults otherwise). On the live site, set them
-in the server environment instead of typing passwords into the file.
+## 4. Configure the application
 
-## 4. Create your admin login
-Visit (change the values; password min. 8 characters):
+Edit `db_config.php` and set your local database credentials.
 
-```
-http://localhost/santiblinds/create_admin.php?username=admin&password=ChangeMe123&name=Your%20Name
+Default XAMPP values are already close to this:
+
+```php
+<?php
+
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'santiblinds');
+define('DB_USER', 'root');
+define('DB_PASS', '');
+define('DB_CHARSET', 'utf8mb4');
+
+define('MAIL_FROM', 'your-sending-gmail@gmail.com');
+define('MAIL_TO', 'where-you-receive-it@gmail.com');
+define('MAIL_APP_PASSWORD', 'xxxx xxxx xxxx xxxx');
 ```
 
-Expect: "Admin account 'admin' created successfully." Then **delete `create_admin.php`**.
+The current file also supports environment-based overrides when the host environment provides values. This is safer for local and production setups.
 
-## 5. Open the site
-- Public site:  http://localhost/santiblinds/index.html
-- Admin login:  http://localhost/santiblinds/admin/admin-login.html
+## 5. Enable encryption (required for current sensitive-data flow)
 
-Always browse through `http://localhost/...`, never by double-clicking an .html file.
+The project includes AES-256-GCM field encryption for customer names, contact details, and order notes. This is described in `ENCRYPTION.md`.
 
-## 6. Test the contact form
-Submit http://localhost/santiblinds/contact.html, then in phpMyAdmin check
-`santiblinds` -> `enquiries`. The row is saved even if email isn't configured.
-While `MAIL_*` in `db_config.php` are still placeholders, the email step is skipped
-(a note is written to Apache's error.log) and the form still succeeds.
+### Generate the key
 
-## 7. Test the Order flow
-1. Open http://localhost/santiblinds/order.html (or click **Order** in the nav).
-2. **Register**, then you are sent to **Log in** (registration does not log you in).
-3. **Customize** a blind -> *Save Design & Continue*.
-4. Optionally click **Get a Quotation**, then **Place Order** or **Purchase**.
-5. In the admin panel check: **Customers** (new account, plus the **Customer Activity** list under it),
-   **Customizations**, **Orders** (new row with type + payment + address in the detail
-   window, plus the **Quotations** list under it) and the **Dashboard** counters.
+Run this from the project root:
 
-Prices are placeholders: edit the numbers in `portal/catalog_lib.php` to match your real
-price list. Prices are always recalculated on the server. No payment is processed online;
-"Purchase" records the chosen method (GCash / Bank Transfer / Cash on Installation) and the
-admin confirms payment.
+```bash
+C:\xampp\php\php.exe tools\generate_key.php
+```
 
-## Email notifications (optional)
-Fill in `MAIL_FROM`, `MAIL_TO`, `MAIL_APP_PASSWORD` in `db_config.php`
-(Google Account -> Security -> 2-Step Verification -> App passwords).
-On localhost, TLS verification is relaxed so Gmail works on XAMPP without a CA bundle.
-On the live site it is fully verified.
+This writes the key outside the web root, in the path configured by `ENC_KEY_FILE` in `db_config.php`.
 
-## Troubleshooting
-| Symptom | Cause / fix |
-|---|---|
-| "Could not reach the server" on login | Apache not running, or nesting wrong (`admin/api/login.php` must exist). |
-| "Server error: SQLSTATE[HY000] [1049] Unknown database" | `schema.sql` not imported. |
-| "...[2002] No connection could be made" | MySQL not started in XAMPP. |
-| "Server returned an unexpected response" | A PHP error. Read `C:\xampp\apache\logs\error.log`. |
-| Pages bounce back to login | Not browsing via `http://localhost/...`, or session cookie blocked. |
-| Contact form: "Could not reach enquiries.php" | Apache off, or `enquiries.php` not in the site root. |
-| Order page: "Could not reach the server" | Apache off, `portal/` folder missing, or page opened as a file instead of via `http://localhost/...`. |
-| Order page: "Server error: ...doesn't exist" | New tables missing. Re-import `database/schema.sql`. |
-| Logos/images/video missing | Copy your `images/` and `video/` folders into the project root. |
-| "Encryption key not found" | Run `tools/generate_key.php`, and check `ENC_KEY_FILE` in `db_config.php` points at the key file. |
-| "Decryption failed for customers.phone ..." | The key file was replaced/lost, or a value was edited by hand in phpMyAdmin. Restore the original key file. |
-| Customer cannot log in after upgrading | `encrypt_existing_data.php` has not been run yet (it fills the e-mail lookup index). |
-| `create_admin.php` shows a blank page | It only runs from localhost; open it via `http://localhost/...`. |
+Important:
+
+- Back up the key file in a separate location from the database.
+- If the key is lost, encrypted values cannot be recovered.
+- For a fresh install, `database/schema.sql` already includes the encryption-ready table structure.
+
+### Existing database migration
+
+If the database existed before the encryption changes, import the migration SQL first, then encrypt the old rows:
+
+```bash
+C:\xampp\php\php.exe tools\encrypt_existing_data.php
+```
+
+For a fresh installation, this step is usually only needed when using a database seeded with older plaintext records.
+
+Once the migration is completed, set `ENC_ALLOW_LEGACY_PLAINTEXT` to `false` in `db_config.php`.
+
+To validate the setup, run:
+
+```bash
+C:\xampp\php\php.exe tools\encryption_demo.php --db
+```
+
+## 6. Create the admin owner account
+
+The current schema uses the `owner_manager` table and stores a bcrypt hash in `password_hash`.
+
+### Preferred CLI helper
+
+Run the helper from the project root:
+
+```bash
+php admin\api\create_owner.php "Full Name" owner@example.com "StrongPassword"
+```
+
+The helper is intended to insert a new row into the `owner_manager` table. Use a password of at least 8 characters.
+
+### If the helper is not usable in your current copy
+
+Create the record directly in MySQL or use the older browser helper as a fallback only for legacy setups:
+
+```text
+http://localhost/santiblinds/create_admin.php?username=admin&password=StrongPassword&name=Admin
+```
+
+This older helper is legacy and depends on an older schema. It is not the current default path for the project.
+
+The schema file also seeds a default owner account:
+
+- Email: `owner@santiblinds.com`
+- Password: `santiowner`
+
+This default account is only a starter convenience for local demo use.
+
+## 7. Run the app
+
+Open the public site:
+
+```text
+http://localhost/santiblinds/
+```
+
+Open the customer order flow:
+
+```text
+http://localhost/santiblinds/order.html
+```
+
+Open the admin panel:
+
+```text
+http://localhost/santiblinds/admin/admin-login.html
+```
+
+The app relies on session cookies and local routing, so always access the project through `http://localhost/...` rather than double-clicking HTML files.
+
+## 8. Test the basic flows
+
+### Contact form
+
+- Submit the form on the public site.
+- Check the `santiblinds` database in phpMyAdmin.
+- Look for rows in the `inquiry` or related enquiry table depending on the schema version you imported.
+
+### Customer order flow
+
+1. Visit the order page.
+2. Register a customer account.
+3. Log in to the portal.
+4. Customize a blind and save the design.
+5. Generate a quotation and place an order.
+6. Verify the new order and customer activity in the admin dashboard.
+
+### Admin dashboard
+
+After logging in to `admin-login.html`, verify that the dashboard reflects the stored data and that customer/order reports are populating correctly.
+
+## 9. Email configuration
+
+Mail settings are defined in `db_config.php`:
+
+```php
+define('MAIL_FROM', 'your-sending-gmail@gmail.com');
+define('MAIL_TO', 'where-you-receive-it@gmail.com');
+define('MAIL_APP_PASSWORD', 'xxxx xxxx xxxx xxxx');
+```
+
+For Gmail, generate an app password from the Google account security settings. The project also supports the current environment-variable approach for safer credentials handling.
+
+## 10. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Could not reach the server` | Apache/MySQL not running | Start both services in XAMPP |
+| `Unknown database` | Database not imported | Import `database/schema.sql` |
+| `SQLSTATE[HY000] [2002]` | MySQL connection failed | Start MySQL and check DB credentials |
+| Pages redirect to login | Session/cookie issue or wrong URL | Use `http://localhost/...` and ensure cookies are enabled |
+| Missing images or video | Assets not copied to the project root | Check `images/` and `video/` folders |
+| `Encryption key not found` | Key file absent or wrong location | Run `tools/generate_key.php` and verify `ENC_KEY_FILE` |
+| Old customer values not decrypting | Legacy plaintext not migrated | Run `encrypt_existing_data.php` and confirm `ENC_ALLOW_LEGACY_PLAINTEXT` |
+| Admin login fails | Wrong password or old schema mismatch | Recreate the `owner_manager` record or check the hashed password |
+
+## 11. Security notes
+
+- Keep `db_config.php` outside the public web root in production or rely on environment variables.
+- Do not commit live credentials or real app passwords to version control.
+- The encryption key is a critical secret and should be stored separately from the database.
+- The project intentionally avoids storing card numbers; payment is tracked by method rather than processing online.
+
+## 12. Relevant files
+
+- `db_config.php` — database and mail settings
+- `crypto_lib.php` — encryption helpers
+- `ENCRYPTION.md` — security and encryption documentation
+- `database/schema.sql` — current schema
+- `portal/catalog_lib.php` — pricing and quotation logic
+- `admin/api/dashboard.php` — dashboard metrics and summaries
+- `tools/generate_key.php` — encryption key generation
