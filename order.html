@@ -71,7 +71,11 @@
 
         <form id="custLoginForm" novalidate>
           <div class="form-group"><label for="lEmail">Email</label><input type="email" id="lEmail" autocomplete="username" required /></div>
-          <div class="form-group"><label for="lPassword">Password</label><input type="password" id="lPassword" autocomplete="current-password" required /></div>
+          <div class="form-group">
+            <label for="lPassword">Password</label>
+            <input type="password" id="lPassword" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" data-password-toggle="lPassword" aria-pressed="false">Show password</button>
+          </div>
           <button type="submit" class="btn btn--primary btn--full" id="loginBtn">Log In</button>
           <p class="order-switch">New to Santi Blinds? <button type="button" class="order-link" id="showRegisterBtn">Create an account</button></p>
         </form>
@@ -84,8 +88,16 @@
           </div>
           <div class="form-group"><label for="rAddress">Installation / delivery address</label><input id="rAddress" autocomplete="street-address" required /></div>
           <div class="form-row">
-            <div class="form-group"><label for="rPassword">Password <span class="order-opt">(8+ characters)</span></label><input type="password" id="rPassword" autocomplete="new-password" minlength="8" required /></div>
-            <div class="form-group"><label for="rConfirm">Confirm password</label><input type="password" id="rConfirm" autocomplete="new-password" required /></div>
+            <div class="form-group">
+              <label for="rPassword">Password <span class="order-opt">(8+ characters)</span></label>
+              <input type="password" id="rPassword" autocomplete="new-password" minlength="8" required />
+              <button type="button" class="password-toggle" data-password-toggle="rPassword" aria-pressed="false">Show password</button>
+            </div>
+            <div class="form-group">
+              <label for="rConfirm">Confirm password</label>
+              <input type="password" id="rConfirm" autocomplete="new-password" required />
+              <button type="button" class="password-toggle" data-password-toggle="rConfirm" aria-pressed="false">Show password</button>
+            </div>
           </div>
           <div class="form-check">
             <input type="checkbox" id="rConsent" required />
@@ -215,19 +227,22 @@
         <h2 class="order-panel__title" tabindex="-1">Order received</h2>
         <p class="order-done__ref" id="doneRef"></p>
         <p class="order-panel__lead" id="doneMsg"></p>
-        <section class="order-card order-receipt" id="receiptDoc" aria-labelledby="receiptTitle">
-          <h3 id="receiptTitle">Order receipt</h3>
+        <div class="order-quote order-receipt" id="receiptDoc" aria-labelledby="receiptTitle">
+          <h4 id="receiptTitle">SANTI BLINDS — ORDER RECEIPT</h4>
+          <p class="order-hint" id="receiptMeta"></p>
           <dl class="order-spec" id="receiptDetails"></dl>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Blind</th><th>Material / Colour</th><th>Size (cm)</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+              <thead><tr><th>Blind</th><th>Material</th><th>Colour</th><th>Size (cm)</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead>
               <tbody id="receiptItems"></tbody>
             </table>
           </div>
           <div class="order-preview__total"><span>Order total</span><strong id="receiptTotal"></strong></div>
-          <button type="button" class="btn btn--ghost" id="receiptPrintBtn">Print Receipt</button>
-        </section>
+          <p class="order-hint">No payment was collected when this order was placed. Final price is confirmed after an on-site measurement.</p>
+        </div>
         <div class="order-actions">
+          <button type="button" class="btn btn--ghost" id="receiptPrintBtn">Print / Save PDF</button>
+          <button type="button" class="btn btn--ghost" id="receiptPngBtn">Download PNG</button>
           <button type="button" class="btn btn--primary" id="newDesignBtn">Design Another</button>
           <a href="index.html" class="btn btn--ghost">Back to Home</a>
         </div>

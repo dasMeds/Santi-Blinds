@@ -798,6 +798,30 @@
 (function () {
   const ADMIN_API = 'api';
 
+  document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    const input = document.getElementById(button.dataset.passwordToggle);
+    const form = button.closest('form');
+    if (form && !form.dataset.passwordResetBound) {
+      form.dataset.passwordResetBound = 'true';
+      form.addEventListener('reset', () => {
+        form.querySelectorAll('[data-password-toggle]').forEach(toggle => {
+          const field = document.getElementById(toggle.dataset.passwordToggle);
+          if (!field) return;
+          field.type = 'password';
+          toggle.textContent = 'Show password';
+          toggle.setAttribute('aria-pressed', 'false');
+        });
+      });
+    }
+    button.addEventListener('click', () => {
+      if (!input) return;
+      const visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.textContent = visible ? 'Hide password' : 'Show password';
+      button.setAttribute('aria-pressed', String(visible));
+    });
+  });
+
   // Escape anything that comes from the database before putting it in innerHTML.
   function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, ch => (
@@ -2355,20 +2379,25 @@
       state.customer.address = address;
       const first = state.customer.full_name.split(' ')[0];
       const basis = res.order.quotation ? `from quotation ${res.order.quotation}` : 'directly from your design';
+      const receiptDate = fmtDate(res.receipt.order_date);
       $('doneRef').textContent = `Reference ${res.order.reference}`;
       $('doneMsg').textContent = `Thank you, ${first}! We've received your order for ${money(res.order.amount)} ${basis}. Our team will contact you on ${state.customer.phone} within one business day to confirm and schedule your measurement.`;
+      $('receiptMeta').textContent = `Placed on ${receiptDate}`;
+      $('receiptMeta').dataset.orderDate = receiptDate;
+      $('receiptMeta').dataset.source = res.order.quotation || 'Direct order';
       $('receiptDetails').innerHTML = `
         <dt>Order reference</dt><dd>${esc(res.order.reference)}</dd>
-        <dt>Order date</dt><dd>${esc(fmtDate(res.receipt.order_date))}</dd>
         <dt>Customer</dt><dd>${esc(state.customer.full_name)}</dd>
         <dt>Phone</dt><dd>${esc(state.customer.phone)}</dd>
         <dt>Email</dt><dd>${esc(state.customer.email)}</dd>
         <dt>Address</dt><dd>${esc(address)}</dd>
+        <dt>Quotation</dt><dd>${esc(res.order.quotation || 'Direct order')}</dd>
       `;
       $('receiptItems').innerHTML = res.receipt.items.map(item => `
         <tr>
           <td>${esc(item.product)}<br><small>${esc(item.blind_type)}</small></td>
-          <td>${esc(item.material)} / ${esc(item.color)}</td>
+          <td>${esc(item.material)}</td>
+          <td>${esc(item.color)}</td>
           <td>${Number(item.width_cm)} × ${Number(item.height_cm)}</td>
           <td>${Number(item.quantity)}</td>
           <td>${money(item.unit_price)}</td>
@@ -2388,6 +2417,176 @@
     document.body.classList.add('printing-receipt');
     window.addEventListener('afterprint', () => document.body.classList.remove('printing-receipt'), { once: true });
     window.print();
+  });
+  $('receiptPngBtn').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const receipt = {
+        reference: $('doneRef').textContent.replace(/^Reference\s*/, ''),
+        date: $('receiptMeta').dataset.orderDate,
+        customer: state.customer,
+        address: $('oAddress').value.trim(),
+        source: $('receiptMeta').dataset.source,
+        items: Array.from($('receiptItems').rows, row => Array.from(row.cells, cell => cell.innerText.trim().replace(/\s+/g, ' '))),
+        total: $('receiptTotal').textContent,
+      };
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Your browser could not create the receipt image.');
+
+      const scale = 2;
+      const width = 1400;
+      const margin = 72;
+      const contentWidth = width - margin * 2;
+      const columns = [
+        { label: 'BLIND', width: 220 },
+        { label: 'MATERIAL', width: 210 },
+        { label: 'COLOUR', width: 150 },
+        { label: 'SIZE (CM)', width: 160 },
+        { label: 'QTY', width: 80 },
+        { label: 'UNIT PRICE', width: 200 },
+        { label: 'TOTAL', width: 236 },
+      ];
+      const lineHeight = 26;
+      const wrap = (text, maxWidth, font) => {
+        ctx.font = font;
+        const words = String(text || '—').split(/\s+/);
+        const lines = [];
+        let line = '';
+        words.forEach(word => {
+          const candidate = line ? `${line} ${word}` : word;
+          if (line && ctx.measureText(candidate).width > maxWidth) {
+            lines.push(line);
+            line = word;
+          } else line = candidate;
+        });
+        if (line) lines.push(line);
+        return lines;
+      };
+      const rows = receipt.items.map(cells => {
+        const cellLines = cells.map((text, index) =>
+          wrap(text, columns[index].width - 24, '20px Arial')
+        );
+        return { cellLines, height: Math.max(58, ...cellLines.map(lines => lines.length * lineHeight + 26)) };
+      });
+      const tableHeight = 54 + rows.reduce((sum, row) => sum + row.height, 0);
+      const height = 610 + tableHeight + 150;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+
+      let y = 72;
+      ctx.fillStyle = '#242923';
+      ctx.font = 'bold 34px Arial';
+      ctx.fillText('SANTI BLINDS', margin, y);
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 24px Arial';
+      ctx.fillText('ORDER RECEIPT', width - margin, y);
+      ctx.textAlign = 'left';
+      y += 42;
+      ctx.fillStyle = '#77766d';
+      ctx.font = '18px Arial';
+      ctx.fillText('Window coverings designed for light, made for life.', margin, y);
+      y += 42;
+      ctx.strokeStyle = '#a2a092';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(margin, y);
+      ctx.lineTo(width - margin, y);
+      ctx.stroke();
+      y += 42;
+
+      const details = [
+        ['Receipt reference', receipt.reference],
+        ['Order date', receipt.date || '—'],
+        ['Customer', receipt.customer.full_name || '—'],
+        ['Phone', receipt.customer.phone || '—'],
+        ['Email', receipt.customer.email || '—'],
+        ['Installation / delivery address', receipt.address || '—'],
+        ['Quotation', receipt.source || 'Direct order'],
+      ];
+      const detailColumn = contentWidth / 2;
+      details.forEach(([label, value], index) => {
+        const x = margin + (index % 2) * detailColumn;
+        if (index > 0 && index % 2 === 0) y += 80;
+        ctx.fillStyle = '#77766d';
+        ctx.font = '16px Arial';
+        ctx.fillText(label.toUpperCase(), x, y);
+        ctx.fillStyle = '#242923';
+        ctx.font = '20px Arial';
+        const valueLines = wrap(value, detailColumn - 24, '20px Arial');
+        valueLines.forEach((line, lineIndex) => ctx.fillText(line, x, y + 26 + lineIndex * 24));
+      });
+      y += 60;
+
+      const tableX = margin;
+      const headerHeight = 54;
+      ctx.fillStyle = '#242923';
+      ctx.fillRect(tableX, y, contentWidth, headerHeight);
+      ctx.font = 'bold 15px Arial';
+      ctx.fillStyle = '#ffffff';
+      let x = tableX;
+      columns.forEach(column => {
+        ctx.fillText(column.label, x + 12, y + 34);
+        x += column.width;
+      });
+      y += headerHeight;
+
+      rows.forEach(row => {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(tableX, y, contentWidth, row.height);
+        ctx.strokeStyle = '#d8d8d2';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tableX, y, contentWidth, row.height);
+        x = tableX;
+        row.cellLines.forEach((lines, index) => {
+          ctx.fillStyle = '#242923';
+          ctx.font = '20px Arial';
+          lines.forEach((line, lineIndex) => ctx.fillText(line, x + 12, y + 30 + lineIndex * lineHeight));
+          x += columns[index].width;
+          if (index < columns.length - 1) {
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + row.height);
+            ctx.stroke();
+          }
+        });
+        y += row.height;
+      });
+
+      y += 50;
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#77766d';
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText('ORDER TOTAL', width - margin - 230, y);
+      ctx.fillStyle = '#242923';
+      ctx.font = 'bold 30px Arial';
+      ctx.fillText(receipt.total, width - margin, y + 4);
+      y += 52;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#77766d';
+      ctx.font = '18px Arial';
+      ctx.fillText('No payment was collected when this order was placed.', margin, y);
+      ctx.fillText('Final price is confirmed after an on-site measurement.', margin, y + 30);
+
+      if (typeof canvas.toBlob !== 'function') throw new Error('PNG download is not supported in this browser.');
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error('Could not create the receipt PNG.')), 'image/png');
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `santi-blinds-receipt-${receipt.reference}.png`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      alert(error.message || 'Could not download the receipt image.');
+    } finally {
+      button.disabled = false;
+    }
   });
 
   /* ---------- Boot ---------- */

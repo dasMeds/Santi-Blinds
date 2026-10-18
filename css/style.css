@@ -4326,6 +4326,11 @@ ul { list-style: none; }
 .order-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
 .order-quote { padding: 1.25rem; margin-top: 1rem; background: rgba(255,255,255,0.05); border: 1px dashed rgba(162,160,146,0.5); font-size: 0.85rem; }
 .order-quote h4 { font-family: var(--font-ui); color: var(--c-white); font-size: 0.95rem; margin-bottom: 0.25rem; }
+.order-receipt { max-width: 100%; }
+.order-receipt .order-spec { grid-template-columns: auto 1fr; }
+.order-receipt .order-history { margin-top: 1rem; padding-top: 0; border-top: 0; }
+.password-toggle { display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0; border: 0; background: transparent; color: var(--c-tan); font: inherit; font-size: 0.8rem; cursor: pointer; }
+.password-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .order-choice { display: grid; gap: 0.75rem; margin-bottom: 1.25rem; }
 .order-choice__opt { display: flex; gap: 0.75rem; align-items: flex-start; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; }
 .order-choice__opt:has(input:checked) { border-color: var(--c-tan); background: rgba(162,160,146,0.12); }
@@ -4365,13 +4370,22 @@ ul { list-style: none; }
   body.printing-receipt #receiptDoc { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; border: 0; padding: 24px; }
   body.printing-receipt #receiptDoc * { color: #000 !important; background-color: #fff !important; }
   body.printing-receipt #receiptPrintBtn { display: none; }
+  body.printing-receipt #receiptDoc .table-scroll { overflow: visible; }
+  body.printing-receipt #receiptDoc table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  body.printing-receipt #receiptDoc th, body.printing-receipt #receiptDoc td { border: 1px solid #777; padding: 6px; text-align: left; }
+  body.printing-receipt #receiptDoc h4 { font-size: 16pt; }
   body.printing-reports * { visibility: hidden; }
   body.printing-reports #reportsPrintArea, body.printing-reports #reportsPrintArea * { visibility: visible; }
   body.printing-reports #reportsPrintArea { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; }
   body.printing-reports #reportsPrintArea * { color: #000 !important; background-color: #fff !important; }
   body.printing-reports #reportsPrintArea .admin-pagination { display: none; }
+  body.printing-reports #reportsPrintArea #reportStats { display: none; }
   body.printing-reports #reportsPrintArea .admin-table-wrap { overflow: visible; }
-  body.printing-reports #reportsPrintArea table { width: 100%; font-size: 9pt; }
+  body.printing-reports #reportsPrintArea table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  body.printing-reports #reportsPrintArea thead { display: table-header-group; }
+  body.printing-reports #reportsPrintArea tr { break-inside: avoid; }
+  body.printing-reports #reportsPrintArea th, body.printing-reports #reportsPrintArea td { border: 1px solid #777; padding: 5px; text-align: left; }
+  body.printing-reports #reportsPrintArea th { font-weight: 700; }
 }
 
 /* Quotation table inside the quotation box (order.html) */

@@ -25,7 +25,8 @@ Santi Blinds is built to support a blinds and window-coverings business in Metro
 - Custom blind dimension and quantity validation
 - Quotation generation with expiry handling
 - Order placement from quotation or direct custom design
-- Customer order receipts after placement
+- Customer order receipts after placement, printable as PDF or downloadable as PNG
+- Printable / PDF and downloadable PNG receipts with full order details
 - Customer address tracking and order history support
 
 ### Admin dashboard
@@ -34,6 +35,8 @@ Santi Blinds is built to support a blinds and window-coverings business in Metro
 - Recent orders and status breakdown
 - Inventory and sales reporting APIs
 - Inventory search and best-selling product reports
+- Printable order and best-selling reports in table format
+- Show/hide password controls on customer login/registration and owner login
 - Customer and order management endpoints
 
 ### Database model
