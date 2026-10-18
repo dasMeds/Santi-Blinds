@@ -19,13 +19,15 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $body = requestBody();
     $id   = (int)($body['id'] ?? 0);
-    $qty  = $body['stock_qty'] ?? null;
-    if (!$id || !is_numeric($qty) || $qty < 0) fail(422, 'A valid product id and stock quantity are required.');
+    $quantityToAdd = filter_var($body['quantity_to_add'] ?? null, FILTER_VALIDATE_INT);
+    if (!$id || $quantityToAdd === false || $quantityToAdd === null || $quantityToAdd < 1) {
+        fail(422, 'A valid product id and quantity greater than zero are required.');
+    }
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare("UPDATE product SET stock_qty = :q WHERE product_id = :id");
-        $stmt->execute([':q' => (int)$qty, ':id' => $id]);
+        $stmt = $pdo->prepare("UPDATE product SET stock_qty = stock_qty + :q WHERE product_id = :id");
+        $stmt->execute([':q' => $quantityToAdd, ':id' => $id]);
         if (!$stmt->rowCount()) {
             $exists = $pdo->prepare("SELECT 1 FROM product WHERE product_id = :id");
             $exists->execute([':id' => $id]);
@@ -34,7 +36,7 @@ if ($method === 'POST') {
                 fail(404, 'Product not found.');
             }
         }
-        recordAudit('Stock updated', sprintf('Product #%d stock set to %d.', $id, (int)$qty));
+        recordAudit('Stock increased', sprintf('Product #%d stock increased by %d.', $id, $quantityToAdd));
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();

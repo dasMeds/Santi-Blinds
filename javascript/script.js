@@ -1417,8 +1417,8 @@
             <td>${money(p.base_price)}</td>
             <td><span class="admin-badge ${low ? 'admin-badge--low' : 'admin-badge--ok'}">${stockLabel}</span></td>
             <td>
-              <input type="number" min="0" value="${p.stock_qty}" data-qty="${p.product_id}" style="width:5.5rem" />
-              <button class="btn btn--ghost" data-save="${p.product_id}">Save</button>
+              <input type="number" min="1" step="1" value="1" data-qty="${p.product_id}" aria-label="Quantity to add for ${esc(p.name)}" style="width:5.5rem" />
+              <button class="btn btn--ghost" data-add-stock="${p.product_id}">Add Quantity</button>
             </td>
           </tr>`;
       }).join('') : emptyRow(6, search ? 'No matching products.' : 'No products.');
@@ -1426,13 +1426,25 @@
 
     searchInput.addEventListener('input', renderInventory);
     tbody.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-save]');
+      const btn = e.target.closest('[data-add-stock]');
       if (!btn) return;
-      const input = tbody.querySelector(`[data-qty="${btn.dataset.save}"]`);
+      const input = tbody.querySelector(`[data-qty="${btn.dataset.addStock}"]`);
+      const quantity = Number(input.value);
+      if (!Number.isSafeInteger(quantity) || quantity < 1) {
+        alert('Enter a whole quantity greater than zero.');
+        input.focus();
+        return;
+      }
       btn.disabled = true;
-      const res = await adminApiPost('inventory.php', { id: Number(btn.dataset.save), stock_qty: Number(input.value) });
-      if (res && res.success) loadInventory();
-      else { alert((res && res.message) || 'Could not update stock.'); btn.disabled = false; }
+      try {
+        const res = await adminApiPost('inventory.php', { id: Number(btn.dataset.addStock), quantity_to_add: quantity });
+        if (res && res.success) await loadInventory();
+        else alert((res && res.message) || 'Could not add stock.');
+      } catch (error) {
+        alert(error.message || 'Could not add stock.');
+      } finally {
+        btn.disabled = false;
+      }
     });
     loadInventory();
   }
@@ -2037,11 +2049,6 @@
   }
 
   /* ---------- Account: log in / register ---------- */
-  function renderUser() {
-    $('orderUser').hidden = !state.customer;
-    $('userName').textContent = state.customer ? state.customer.full_name : '';
-  }
-
   function showAuth(mode) {
     const reg = mode === 'register';
     $('custLoginForm').hidden = reg;
@@ -2054,7 +2061,7 @@
 
   function sessionEnded() {
     state.customer = null; state.quote = null; announceAuth(null);
-    renderUser(); showAuth('login'); go('auth');
+    showAuth('login'); go('auth');
     showAlert('Your session has ended. Please log in again.');
   }
 
@@ -2063,7 +2070,6 @@
 
   async function startSession(customer) {
     state.customer = customer;
-    renderUser();
     announceAuth(customer);
     go('customize');
     loadSavedQuotes();
@@ -2112,14 +2118,6 @@
       $('custLoginForm').reset();
       await startSession(res.customer);
     } catch (err) { fail(err); } finally { btn.disabled = false; }
-  });
-
-  $('customerLogoutBtn').addEventListener('click', async () => {
-    clearAlert();
-    try { await api('customer_logout.php', {}); } catch (_) { /* log out locally either way */ }
-    state.customer = null; state.quote = null; state.cart = []; announceAuth(null);
-    renderCart(); renderSavedQuotes([]); renderUser(); showAuth('login'); go('auth');
-    showAlert('You have been logged out.', true);
   });
 
   /* ---------- Catalog lookups ---------- */
@@ -2778,7 +2776,7 @@
     Cancelled:  (o) => o.status === 'Cancelled',
   };
 
-  const state = { orders: [], filter: 'all', open: new Set() };
+  const state = { orders: [], filter: 'all', open: new Set(), confirmingCancel: new Set() };
 
   function showAlert(msg) { const el = $('ordersAlert'); el.textContent = msg; el.hidden = false; }
 
@@ -2820,6 +2818,15 @@
           </table>
         </div>
         ${o.quotation ? `<p class="acct-note">From quotation ${esc(o.quotation)}</p>` : ''}
+        ${['Pending', 'Processing'].includes(o.status) ? `
+          ${state.confirmingCancel.has(o.order_id) ? `
+            <div class="acct-cancel-confirm" role="group" aria-label="Confirm cancellation of order ${esc(o.reference)}">
+              <p>Are you sure you want to cancel this order?</p>
+              <button type="button" class="btn btn--ghost acct-cancel-order" data-confirm-cancel="${esc(o.order_id)}">Yes, cancel order</button>
+              <button type="button" class="btn btn--ghost" data-keep-order="${esc(o.order_id)}">Keep order</button>
+            </div>
+          ` : `<button type="button" class="btn btn--ghost acct-cancel-order" data-cancel-order="${esc(o.order_id)}">Cancel order</button>`}
+        ` : ''}
       </div>
     </article>`;
   }
@@ -2843,32 +2850,99 @@
     state.filter = b.dataset.filter; render();
   });
   $('ordersList').addEventListener('click', (e) => {
+    const confirmButton = e.target.closest('[data-confirm-cancel]');
+    if (confirmButton) {
+      cancelOrder(Number(confirmButton.dataset.confirmCancel), confirmButton);
+      return;
+    }
+    const keepButton = e.target.closest('[data-keep-order]');
+    if (keepButton) {
+      const id = Number(keepButton.dataset.keepOrder);
+      state.confirmingCancel.delete(id);
+      render();
+      const cancelButton = document.querySelector(`[data-cancel-order="${id}"]`);
+      if (cancelButton) cancelButton.focus();
+      return;
+    }
+    const cancelButton = e.target.closest('[data-cancel-order]');
+    if (cancelButton) {
+      const id = Number(cancelButton.dataset.cancelOrder);
+      state.confirmingCancel.add(id);
+      render();
+      const confirmAction = document.querySelector(`[data-confirm-cancel="${id}"]`);
+      if (confirmAction) confirmAction.focus();
+      return;
+    }
     const b = e.target.closest('[data-toggle]'); if (!b) return;
     const id = +b.dataset.toggle;
-    state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+    state.confirmingCancel.clear();
+    if (state.open.has(id)) state.open.delete(id);
+    else { state.open.clear(); state.open.add(id); }
     render();
     const again = document.querySelector(`[data-toggle="${id}"]`); if (again) again.focus();
   });
 
-  (async function load() {
+  async function loadOrders(initial = false) {
     try {
       const res = await fetch('portal/my_orders.php', { credentials: 'include' });
-      if (res.status === 401) { $('ordersLoading').hidden = true; $('ordersGate').hidden = false; return; }
+      if (res.status === 401) { $('ordersLoading').hidden = true; $('ordersGate').hidden = false; return false; }
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Could not load your orders.');
       state.orders = data.orders;
 
-      // Open the order named in the link (?order=12), else the newest one.
-      const wanted = +new URLSearchParams(location.search).get('order');
-      const pick = state.orders.find(o => o.order_id === wanted) || state.orders[0];
-      if (pick) state.open.add(pick.order_id);
+      if (initial) {
+        // Open the order named in the link (?order=12), else the newest one.
+        const wanted = +new URLSearchParams(location.search).get('order');
+        const pick = state.orders.find(o => o.order_id === wanted) || state.orders[0];
+        if (pick) state.open.add(pick.order_id);
+      }
 
       $('ordersLoading').hidden = true;
       $('ordersBody').hidden = false;
       render();
+      return true;
     } catch (err) {
       $('ordersLoading').hidden = true;
       showAlert((err && err.message) || 'Could not reach the server. Please try again.');
+      return false;
     }
-  })();
+  }
+
+  async function cancelOrder(orderId, button) {
+    const order = state.orders.find(o => o.order_id === orderId);
+    if (!order || !['Pending', 'Processing'].includes(order.status)) return;
+
+    button.disabled = true;
+    try {
+      const res = await fetch('portal/cancel_order.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      if (res.status === 401) { window.location.href = 'order.html'; return; }
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Could not cancel this order.');
+
+      state.open.delete(orderId);
+      state.confirmingCancel.delete(orderId);
+      const refreshed = await loadOrders();
+      if (!refreshed) {
+        const cancelledOrder = state.orders.find(o => o.order_id === orderId);
+        if (cancelledOrder) {
+          cancelledOrder.status = 'Cancelled';
+          cancelledOrder.tracking = { cancelled: true, steps: [] };
+        }
+        render();
+      }
+      showAlert(refreshed
+        ? `Order ${order.reference} was cancelled.`
+        : `Order ${order.reference} was cancelled, but the list could not refresh. Reload the page to see the latest status.`);
+    } catch (err) {
+      showAlert((err && err.message) || 'Could not cancel this order. Please try again.');
+      button.disabled = false;
+    }
+  }
+
+  loadOrders(true);
 })();
