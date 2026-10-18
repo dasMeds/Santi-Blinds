@@ -94,7 +94,10 @@ if (!empty($_GET['id'])) {
     if (!$customer) fail(404, 'Customer not found.');
 
     $o = $pdo->prepare(
-        "SELECT o.order_id, MAX(o.status) AS status, SUM(o.total_amount) AS amount,
+        "SELECT o.order_id,
+                CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
+                     ELSE MAX(o.status) END AS status,
+                SUM(o.total_amount) AS amount,
                 MIN(o.order_date) AS order_date, MAX(o.quotation_id) AS quotation_id,
                 GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products
          FROM orders o JOIN product p ON p.product_id = o.product_id

@@ -4360,6 +4360,18 @@ ul { list-style: none; }
   body.printing-quote #quoteDoc, body.printing-quote #quoteDoc * { visibility: visible; }
   body.printing-quote #quoteDoc { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; border: 0; padding: 24px; }
   body.printing-quote #quoteDoc h4 { color: #000; }
+  body.printing-receipt * { visibility: hidden; }
+  body.printing-receipt #receiptDoc, body.printing-receipt #receiptDoc * { visibility: visible; }
+  body.printing-receipt #receiptDoc { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; border: 0; padding: 24px; }
+  body.printing-receipt #receiptDoc * { color: #000 !important; background-color: #fff !important; }
+  body.printing-receipt #receiptPrintBtn { display: none; }
+  body.printing-reports * { visibility: hidden; }
+  body.printing-reports #reportsPrintArea, body.printing-reports #reportsPrintArea * { visibility: visible; }
+  body.printing-reports #reportsPrintArea { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; }
+  body.printing-reports #reportsPrintArea * { color: #000 !important; background-color: #fff !important; }
+  body.printing-reports #reportsPrintArea .admin-pagination { display: none; }
+  body.printing-reports #reportsPrintArea .admin-table-wrap { overflow: visible; }
+  body.printing-reports #reportsPrintArea table { width: 100%; font-size: 9pt; }
 }
 
 /* Quotation table inside the quotation box (order.html) */

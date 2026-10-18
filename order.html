@@ -215,6 +215,18 @@
         <h2 class="order-panel__title" tabindex="-1">Order received</h2>
         <p class="order-done__ref" id="doneRef"></p>
         <p class="order-panel__lead" id="doneMsg"></p>
+        <section class="order-card order-receipt" id="receiptDoc" aria-labelledby="receiptTitle">
+          <h3 id="receiptTitle">Order receipt</h3>
+          <dl class="order-spec" id="receiptDetails"></dl>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Blind</th><th>Material / Colour</th><th>Size (cm)</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+              <tbody id="receiptItems"></tbody>
+            </table>
+          </div>
+          <div class="order-preview__total"><span>Order total</span><strong id="receiptTotal"></strong></div>
+          <button type="button" class="btn btn--ghost" id="receiptPrintBtn">Print Receipt</button>
+        </section>
         <div class="order-actions">
           <button type="button" class="btn btn--primary" id="newDesignBtn">Design Another</button>
           <a href="index.html" class="btn btn--ghost">Back to Home</a>

@@ -50,19 +50,32 @@
         <label>To <input type="date" id="reportTo" /></label>
         <select id="reportStatusFilter" aria-label="Filter report by order status">
           <option value="">All statuses</option><option>Pending</option><option>Processing</option>
-          <option>Ready for Install</option><option>Completed</option><option>Cancelled</option>
+          <option>Completed</option><option>Cancelled</option>
         </select>
         <button id="runReportBtn" class="btn btn--ghost">Run Report</button>
         <button id="exportReportBtn" class="btn btn--primary">Export CSV</button>
+        <button id="printReportsBtn" class="btn btn--ghost">Print Reports</button>
       </div>
-      <div class="admin-stats" id="reportStats"></div>
-      <div class="admin-table-wrap">
-        <table class="admin-table" id="reportTable">
-          <thead><tr><th>ID</th><th>Customer</th><th>Location</th><th>Product</th><th>Qty</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-          <tbody></tbody>
-        </table>
+      <div id="reportsPrintArea">
+        <h2 class="section-title">Order report</h2>
+        <p id="reportPrintRange" class="section-desc"></p>
+        <div class="admin-stats" id="reportStats"></div>
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="reportTable">
+            <thead><tr><th>ID</th><th>Customer</th><th>Location</th><th>Product</th><th>Qty</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="admin-pagination" id="reportsPagination"></div>
+        <h2 class="section-title">Best-selling products</h2>
+        <p class="section-desc">Ranked by units sold across all completed orders.</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="bestSellersTable">
+            <thead><tr><th>Rank</th><th>Product</th><th>Units Sold</th><th>Sales Amount</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
-      <div class="admin-pagination" id="reportsPagination"></div>
     </main>
   </div>
 

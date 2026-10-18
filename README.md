@@ -25,6 +25,7 @@ Santi Blinds is built to support a blinds and window-coverings business in Metro
 - Custom blind dimension and quantity validation
 - Quotation generation with expiry handling
 - Order placement from quotation or direct custom design
+- Customer order receipts after placement
 - Customer address tracking and order history support
 
 ### Admin dashboard
@@ -32,6 +33,7 @@ Santi Blinds is built to support a blinds and window-coverings business in Metro
 - KPI overview: order totals, pending orders, customer count, revenue, low-stock items
 - Recent orders and status breakdown
 - Inventory and sales reporting APIs
+- Inventory search and best-selling product reports
 - Customer and order management endpoints
 
 ### Database model
@@ -69,6 +71,7 @@ Santi Blinds/
 ├── database/
 │   ├── schema.sql           # Core database schema
 │   ├── sample_data.sql      # Sample/seed data
+│   ├── migrate_ready_status.sql # Merge legacy Ready orders into Completed
 │   └── migration_accounts_quotations.sql
 ├── css/                     # Stylesheets
 ├── javascript/              # Frontend scripts

@@ -853,13 +853,11 @@
     return {
       'Pending': 'admin-badge--pending',
       'Processing': 'admin-badge--processing',
-      'Ready': 'admin-badge--ready',
-      'Ready for Install': 'admin-badge--ready',
       'Completed': 'admin-badge--completed',
       'Cancelled': 'admin-badge--cancelled',
     }[status] || '';
   }
-  const badge = s => `<span class="admin-badge ${statusBadgeClass(s)}">${esc(s === 'Ready' ? 'Ready for Install' : s)}</span>`;
+  const badge = s => `<span class="admin-badge ${statusBadgeClass(s)}">${esc(s)}</span>`;
 
   function statCard(label, value) {
     return `<div class="admin-stat-card"><span class="admin-stat-card__label">${label}</span><span class="admin-stat-card__value">${value}</span></div>`;
@@ -1068,7 +1066,7 @@
           <td>${esc(o.products)}</td>
           <td>${o.quantity}</td><td>${money(o.amount)}</td>
           <td><select class="admin-inline-status" data-inline-order-status="${o.order_id}" data-payment-method="${esc(o.payment_method || 'Cash')}" aria-label="Change order ${o.order_id} status">
-            ${['Pending', 'Processing', 'Ready for Install', 'Completed', 'Cancelled'].map(status => `<option${status === o.status ? ' selected' : ''}>${status}</option>`).join('')}
+            ${['Pending', 'Processing', 'Completed', 'Cancelled'].map(status => `<option${status === o.status ? ' selected' : ''}>${status}</option>`).join('')}
           </select></td>
           <td>${fmtDate(o.order_date)}</td>
           <td><button class="btn btn--ghost" data-view="${o.order_id}">View</button></td>
@@ -1254,6 +1252,8 @@
   const inventoryTable = document.getElementById('inventoryTable');
   if (inventoryTable) {
     const tbody = inventoryTable.querySelector('tbody');
+    const searchInput = document.getElementById('inventorySearch');
+    let inventoryRows = [];
 
     async function loadInventory() {
       const data = await adminApiGet('inventory.php');
@@ -1261,8 +1261,18 @@
       if (!data.success) { tbody.innerHTML = emptyRow(6, data.message); return; }
       const note = document.getElementById('lowStockNote');
       if (note) note.textContent = `Products with ${data.low_stock_level} or fewer in stock are flagged as low.`;
+      inventoryRows = data.inventory;
+      renderInventory();
+    }
 
-      tbody.innerHTML = data.inventory.length ? data.inventory.map(p => {
+    function renderInventory() {
+      const search = searchInput.value.trim().toLocaleLowerCase();
+      const rows = inventoryRows.filter(p =>
+        [p.name, p.category, p.blind_type, p.sku].some(value =>
+          String(value || '').toLocaleLowerCase().includes(search)
+        )
+      );
+      tbody.innerHTML = rows.length ? rows.map(p => {
         const stock = Number(p.stock_qty);
         const low = Number(p.low_stock) === 1;
         const stockLabel = stock === 0 ? 'Out of stock' : `${stock}${low ? ' (low)' : ''}`;
@@ -1276,9 +1286,10 @@
               <button class="btn btn--ghost" data-save="${p.product_id}">Save</button>
             </td>
           </tr>`;
-      }).join('') : emptyRow(6, 'No products.');
+      }).join('') : emptyRow(6, search ? 'No matching products.' : 'No products.');
     }
 
+    searchInput.addEventListener('input', renderInventory);
     tbody.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-save]');
       if (!btn) return;
@@ -1446,6 +1457,22 @@
     let reportsPage = 1;
     let reportsPerPage = 25;
 
+    async function loadBestSellers() {
+      const data = await adminApiGet('best_sellers.php');
+      if (!data) return;
+      const bestSellersBody = document.querySelector('#bestSellersTable tbody');
+      if (!data.success) {
+        bestSellersBody.innerHTML = emptyRow(4, data.message || 'Could not load best-selling report.');
+        return;
+      }
+      bestSellersBody.innerHTML = data.products.length
+        ? data.products.map((product, index) => `
+          <tr><td>${index + 1}</td><td>${esc(product.product)}</td>
+          <td>${Number(product.units)}</td><td>${money(product.revenue)}</td></tr>
+        `).join('')
+        : emptyRow(4, 'No completed sales yet.');
+    }
+
     async function loadReport(page = reportsPage, perPage = reportsPerPage) {
       reportsPage = page;
       reportsPerPage = perPage;
@@ -1466,6 +1493,8 @@
         }
         reportsPage = data.pagination.page;
         reportRows = data.orders;
+        document.getElementById('reportPrintRange').textContent =
+          `Order report: ${fromInput.value || 'All dates'} through ${toInput.value || 'All dates'}`;
         document.getElementById('reportStats').innerHTML = `
           ${statCard('Orders in Range', data.stats.orders)}
           ${statCard('Completed', data.stats.completed_orders)}
@@ -1490,6 +1519,50 @@
     reportSearch.addEventListener('input', debounce(resetReportPage, 250));
     fromInput.addEventListener('change', resetReportPage);
     toInput.addEventListener('change', resetReportPage);
+    document.getElementById('printReportsBtn').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const firstPage = await adminApiGet('reports.php', {
+          from: fromInput.value,
+          to: toInput.value,
+          status: reportStatusFilter.value,
+          search: reportSearch.value.trim(),
+          page: 1,
+          per_page: 200,
+        });
+        if (!firstPage || !firstPage.success) throw new Error(firstPage && firstPage.message || 'Could not load report for printing.');
+        let printRows = firstPage.orders;
+        for (let page = 2; page <= firstPage.pagination.pages; page++) {
+          const nextPage = await adminApiGet('reports.php', {
+            from: fromInput.value,
+            to: toInput.value,
+            status: reportStatusFilter.value,
+            search: reportSearch.value.trim(),
+            page,
+            per_page: 200,
+          });
+          if (!nextPage || !nextPage.success) throw new Error(nextPage && nextPage.message || 'Could not load report for printing.');
+          printRows = printRows.concat(nextPage.orders);
+        }
+        tbody.innerHTML = printRows.length ? printRows.map(order => `
+          <tr><td>#${order.order_id}</td><td>${esc(order.full_name)}</td><td>${esc(order.address || '—')}</td>
+          <td>${esc(order.products)}</td><td>${Number(order.quantity)}</td><td>${money(order.amount)}</td>
+          <td>${badge(order.status)}</td><td>${fmtDate(order.order_date)}</td></tr>
+        `).join('') : emptyRow(8, 'No orders in this date range.');
+        document.body.classList.add('printing-reports');
+        window.addEventListener('afterprint', () => {
+          document.body.classList.remove('printing-reports');
+          button.disabled = false;
+          loadReport(reportsPage, reportsPerPage);
+        }, { once: true });
+        window.print();
+      } catch (error) {
+        alert(error.message || 'Could not print reports.');
+        button.disabled = false;
+        loadReport(reportsPage, reportsPerPage);
+      }
+    });
     document.getElementById('exportReportBtn').addEventListener('click', async () => {
       try {
         const exportData = await adminApiGet('reports.php', {
@@ -1537,6 +1610,7 @@
       }
     });
     loadReport();
+    loadBestSellers();
   }
 
   // ---------- admin-audit.html ----------
@@ -2283,6 +2357,25 @@
       const basis = res.order.quotation ? `from quotation ${res.order.quotation}` : 'directly from your design';
       $('doneRef').textContent = `Reference ${res.order.reference}`;
       $('doneMsg').textContent = `Thank you, ${first}! We've received your order for ${money(res.order.amount)} ${basis}. Our team will contact you on ${state.customer.phone} within one business day to confirm and schedule your measurement.`;
+      $('receiptDetails').innerHTML = `
+        <dt>Order reference</dt><dd>${esc(res.order.reference)}</dd>
+        <dt>Order date</dt><dd>${esc(fmtDate(res.receipt.order_date))}</dd>
+        <dt>Customer</dt><dd>${esc(state.customer.full_name)}</dd>
+        <dt>Phone</dt><dd>${esc(state.customer.phone)}</dd>
+        <dt>Email</dt><dd>${esc(state.customer.email)}</dd>
+        <dt>Address</dt><dd>${esc(address)}</dd>
+      `;
+      $('receiptItems').innerHTML = res.receipt.items.map(item => `
+        <tr>
+          <td>${esc(item.product)}<br><small>${esc(item.blind_type)}</small></td>
+          <td>${esc(item.material)} / ${esc(item.color)}</td>
+          <td>${Number(item.width_cm)} × ${Number(item.height_cm)}</td>
+          <td>${Number(item.quantity)}</td>
+          <td>${money(item.unit_price)}</td>
+          <td>${money(item.total_amount)}</td>
+        </tr>
+      `).join('');
+      $('receiptTotal').textContent = money(res.order.amount);
       if (!fromQuote) { state.cart = []; renderCart(); }
       state.quote = null;
       loadSavedQuotes();
@@ -2291,6 +2384,11 @@
   });
 
   $('newDesignBtn').addEventListener('click', () => { clearAlert(); resetForm(); go('customize'); });
+  $('receiptPrintBtn').addEventListener('click', () => {
+    document.body.classList.add('printing-receipt');
+    window.addEventListener('afterprint', () => document.body.classList.remove('printing-receipt'), { once: true });
+    window.print();
+  });
 
   /* ---------- Boot ---------- */
   (async function boot() {

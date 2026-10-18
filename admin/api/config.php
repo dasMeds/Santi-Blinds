@@ -12,7 +12,7 @@ $GLOBALS['IS_LOCAL'] = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::
 
 // Stock at or below this number counts as "low stock" (the ERD has no reorder level).
 const LOW_STOCK_LEVEL = 5;
-const ORDER_STATUSES  = ['Pending', 'Processing', 'Ready for Install', 'Completed', 'Cancelled'];
+const ORDER_STATUSES  = ['Pending', 'Processing', 'Completed', 'Cancelled'];
 
 set_exception_handler(function (Throwable $e) {
     error_log('[admin api] ' . get_class($e) . ': ' . $e->getMessage()

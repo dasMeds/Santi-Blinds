@@ -14,7 +14,7 @@ $byMonth = $pdo->query(
          FROM orders o
          LEFT JOIN sale s ON s.order_id = o.order_id
          GROUP BY o.order_id
-         HAVING MAX(o.status) = 'Completed'
+         HAVING MAX(o.status) IN ('Completed', 'Ready', 'Ready for Install')
      ) AS completed_orders
      WHERE COALESCE(completed_orders.sale_date, completed_orders.order_date) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
      GROUP BY month ORDER BY month ASC"
@@ -25,7 +25,7 @@ $byProduct = $pdo->query(
     "SELECT p.name AS product, SUM(o.quantity) AS units,
             COALESCE(SUM(o.total_amount),0) AS revenue
      FROM orders o JOIN product p ON p.product_id = o.product_id
-     WHERE o.status = 'Completed'
+     WHERE o.status IN ('Completed', 'Ready', 'Ready for Install')
      GROUP BY p.product_id, p.name ORDER BY revenue DESC"
 )->fetchAll();
 
@@ -40,7 +40,7 @@ $totals = $pdo->query(
          FROM orders o
          LEFT JOIN sale s ON s.order_id = o.order_id
          GROUP BY o.order_id
-         HAVING MAX(o.status) = 'Completed'
+         HAVING MAX(o.status) IN ('Completed', 'Ready', 'Ready for Install')
      ) AS completed_orders"
 )->fetch();
 

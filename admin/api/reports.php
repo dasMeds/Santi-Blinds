@@ -21,8 +21,8 @@ $params = [];
 $status = (string)($_GET['status'] ?? '');
 if ($status !== '') {
     if (!in_array($status, ORDER_STATUSES, true)) fail(422, 'Invalid order status filter.');
-    if ($status === 'Ready for Install') {
-        $where[] = "o.status IN ('Ready', 'Ready for Install')";
+    if ($status === 'Completed') {
+        $where[] = "o.status IN ('Completed', 'Ready', 'Ready for Install')";
     } else {
         $where[] = 'o.status = :status';
         $params[':status'] = $status;
@@ -46,7 +46,7 @@ if ($to !== '') {
 }
 
 $baseSql = "SELECT o.order_id, c.full_name, c.address,
-                   CASE WHEN MAX(o.status) = 'Ready' THEN 'Ready for Install'
+                   CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
                         ELSE MAX(o.status) END AS status,
                    SUM(o.quantity) AS quantity,
                    SUM(o.total_amount) AS amount, MIN(o.order_date) AS order_date,

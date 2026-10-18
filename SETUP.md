@@ -46,6 +46,10 @@ Use PHP 8.0 or newer (current XAMPP versions are fine).
    `customer_activity`) and never touches your data.
 3. *(Optional demo data)* Import `database/sample_data.sql` the same way.
 
+**Upgrading an existing database for the merged order statuses?** Back up your
+database, then import `database/migrate_ready_status.sql` once. This changes
+existing `Ready` and `Ready for Install` order lines to `Completed`.
+
 `db_config.php` already matches XAMPP defaults (`root`, empty password).
 
 ## 3b. Turn on database encryption (required)

@@ -19,7 +19,7 @@ $revenueStats = $pdo->query(
          FROM orders o
          LEFT JOIN sale s ON s.order_id = o.order_id
          GROUP BY o.order_id
-         HAVING MAX(o.status) = 'Completed'
+         HAVING MAX(o.status) IN ('Completed', 'Ready', 'Ready for Install')
      ) AS completed_orders"
 )->fetch();
 $revenueTotal = (float)$revenueStats['total_revenue'];
@@ -29,7 +29,10 @@ $low = $pdo->prepare("SELECT COUNT(*) FROM product WHERE stock_qty <= :lvl");
 $low->execute([':lvl' => LOW_STOCK_LEVEL]);
 
 $recentOrders = $pdo->query(
-    "SELECT o.order_id, c.full_name, MAX(o.status) AS status, SUM(o.total_amount) AS amount,
+    "SELECT o.order_id, c.full_name,
+            CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
+                 ELSE MAX(o.status) END AS status,
+            SUM(o.total_amount) AS amount,
             MIN(o.order_date) AS order_date,
             GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products
      FROM orders o
@@ -40,7 +43,12 @@ $recentOrders = $pdo->query(
 )->fetchAll();
 
 $statusBreakdown = $pdo->query(
-    "SELECT status, COUNT(DISTINCT order_id) AS count FROM orders GROUP BY status"
+    "SELECT CASE WHEN status IN ('Ready', 'Ready for Install') THEN 'Completed'
+                 ELSE status END AS status,
+            COUNT(DISTINCT order_id) AS count
+     FROM orders
+     GROUP BY CASE WHEN status IN ('Ready', 'Ready for Install') THEN 'Completed'
+                   ELSE status END"
 )->fetchAll();
 
 echo json_encode([

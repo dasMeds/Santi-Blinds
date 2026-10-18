@@ -85,6 +85,26 @@ try {
         $pdo->prepare("UPDATE quotation SET status = 'Ordered' WHERE quotation_id = :id")->execute([':id' => $qid]);
     }
 
+    $receiptStmt = $pdo->prepare(
+        "SELECT MIN(o.order_date) AS order_date
+         FROM orders o
+         WHERE o.order_id = :id AND o.customer_id = :customer_id"
+    );
+    $receiptStmt->execute([':id' => $orderId, ':customer_id' => $customerId]);
+    $orderDate = $receiptStmt->fetchColumn();
+    $itemsStmt = $pdo->prepare(
+        "SELECT p.name AS product, p.blind_type, m.name AS material, col.name AS color,
+                o.width_cm, o.height_cm, o.quantity, o.unit_price, o.total_amount
+         FROM orders o
+         JOIN product p ON p.product_id = o.product_id
+         JOIN material m ON m.material_id = o.material_id
+         JOIN color col ON col.color_id = o.color_id
+         WHERE o.order_id = :id AND o.customer_id = :customer_id
+         ORDER BY o.line_id"
+    );
+    $itemsStmt->execute([':id' => $orderId, ':customer_id' => $customerId]);
+    $receiptItems = $itemsStmt->fetchAll();
+
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
@@ -102,5 +122,6 @@ respond([
     'success' => true,
     'order'   => ['id' => $orderId, 'reference' => sprintf('SB-%05d', $orderId), 'amount' => $total,
                   'items' => count($lines), 'quotation' => $quoteRef],
+    'receipt' => ['order_date' => $orderDate, 'items' => $receiptItems],
     'message' => 'Thank you! Your order has been received.',
 ]);

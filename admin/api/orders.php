@@ -22,7 +22,7 @@ if ($method === 'GET') {
 
         $h = $pdo->prepare(
             "SELECT o.order_id, c.full_name, c.phone, c.email, c.address,
-                    CASE WHEN MAX(o.status) = 'Ready' THEN 'Ready for Install'
+                    CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
                          ELSE MAX(o.status) END AS status,
                     MIN(o.order_date) AS order_date,
                     SUM(o.total_amount) AS amount, MAX(o.quotation_id) AS quotation_id
@@ -66,8 +66,8 @@ if ($method === 'GET') {
     $statusFilter = (string)($_GET['status'] ?? '');
     if ($statusFilter !== '') {
         if (!in_array($statusFilter, ORDER_STATUSES, true)) fail(422, 'Invalid order status filter.');
-        if ($statusFilter === 'Ready for Install') {
-            $where[] = "o.status IN ('Ready', 'Ready for Install')";
+        if ($statusFilter === 'Completed') {
+            $where[] = "o.status IN ('Completed', 'Ready', 'Ready for Install')";
         } else {
             $where[] = 'o.status = :st';
             $params[':st'] = $statusFilter;
@@ -103,7 +103,7 @@ if ($method === 'GET') {
         $params[':s1'] = $like; $params[':s2'] = $like; $params[':s3'] = $like;
     }
     $sql = "SELECT o.order_id, c.full_name,
-                   CASE WHEN MAX(o.status) = 'Ready' THEN 'Ready for Install'
+                   CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
                         ELSE MAX(o.status) END AS status,
                    SUM(o.quantity) AS quantity, SUM(o.total_amount) AS amount,
                    MIN(o.order_date) AS order_date, MAX(o.quotation_id) AS quotation_id,
@@ -138,7 +138,6 @@ if ($method === 'GET') {
     $stmt->execute($params);
     $rows = array_map(function ($r) {
         // NULL quotation_id = a direct order placed from the design.
-        if ($r['status'] === 'Ready') $r['status'] = 'Ready for Install';
         $r['quotation_ref'] = $r['quotation_id'] ? sprintf('QT-%05d', (int)$r['quotation_id']) : null;
         unset($r['quotation_id']);
         return $r;

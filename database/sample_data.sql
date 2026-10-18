@@ -169,8 +169,8 @@ BEGIN
     SET v_unit_price = (SELECT base_price FROM product WHERE product_id = v_product_id)
                      + (SELECT price_modifier FROM material WHERE material_id = v_material_id);
     SET v_total = ROUND(v_unit_price * v_qty * (v_width / 100) * (v_height / 100), 2);
-    SET v_status = ELT(1 + MOD(i - 1, 5),
-                       'Pending','Processing','Ready for Install','Completed','Cancelled');
+    SET v_status = ELT(1 + MOD(i - 1, 4),
+                       'Pending','Processing','Completed','Cancelled');
 
     INSERT INTO orders
       (order_id, customer_id, quotation_id, product_id, material_id, color_id,
