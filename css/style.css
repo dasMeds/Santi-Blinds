@@ -1114,7 +1114,7 @@ ul { list-style: none; }
   font-family: var(--font-display);
   font-size: 0.9rem;
   letter-spacing: 0.08em;
-  color: var(--c-white);
+  color: var(--c-black);
   margin-bottom: 0.15rem;
 }
 .gallery__caption span {
@@ -1123,7 +1123,7 @@ ul { list-style: none; }
   font-weight: 400;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--c-tan);
+  color: var(--c-black);
 }
 
 /* ============================================
