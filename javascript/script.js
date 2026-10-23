@@ -368,7 +368,7 @@
     modal.style.cssText = `
       position:fixed;inset:0;z-index:9999;
       display:flex;align-items:center;justify-content:center;
-      background:rgba(18,18,18,0.72);
+      background:rgba(var(--c-rgb-overlay),0.48);
       backdrop-filter:blur(6px);
       padding:20px;
       animation:fadeInModal 0.3s ease;
@@ -376,8 +376,8 @@
 
     modal.innerHTML = `
       <div style="
-        background:#1a1a1a;
-        border:1px solid rgba(201,169,110,0.3);
+        background:var(--c-surface);
+        border:1px solid rgba(var(--c-rgb-accent),0.3);
         border-radius:12px;
         padding:48px 40px 40px;
         max-width:460px;width:100%;
@@ -388,15 +388,15 @@
         <button id="enquiryModalClose" aria-label="Close" style="
           position:absolute;top:16px;right:18px;
           background:none;border:none;cursor:pointer;
-          color:#888;font-size:22px;line-height:1;padding:4px 8px;
+          color:var(--c-muted);font-size:22px;line-height:1;padding:4px 8px;
         ">&#x2715;</button>
 
         <div style="
           width:56px;height:56px;border-radius:50%;
-          background:rgba(201,169,110,0.12);
-          border:1.5px solid rgba(201,169,110,0.4);
+          background:rgba(var(--c-rgb-accent),0.12);
+          border:1.5px solid rgba(var(--c-rgb-accent),0.4);
           display:flex;align-items:center;justify-content:center;
-          margin:0 auto 24px;font-size:22px;color:#c9a96e;
+          margin:0 auto 24px;font-size:22px;color:var(--c-accent);
         ">&#x2726;</div>
 
         <h2 style="
@@ -404,14 +404,14 @@
           font-family:'Anton',sans-serif;
           font-size:clamp(1.6rem,4vw,2rem);
           letter-spacing:.06em;
-          color:#c9a96e;
+          color:var(--c-accent);
         ">Enquiry Sent</h2>
 
         <p style="
           margin:0 0 6px;
           font-family:'Quicksand',sans-serif;
           font-size:1rem;
-          color:#e0dbd2;
+          color:var(--c-body);
           line-height:1.6;
         ">Thank you! We'll be in touch within one business day.</p>
 
@@ -419,15 +419,15 @@
           margin:0 0 32px;
           font-family:'Quicksand',sans-serif;
           font-size:.875rem;
-          color:#888;
+          color:var(--c-muted);
           line-height:1.6;
         ">In the meantime, feel free to browse our collection.</p>
 
         <a href="products.html" style="
           display:inline-block;
           padding:.75rem 2rem;
-          background:#c9a96e;
-          color:#1a1a1a;
+          background:var(--c-accent);
+          color:var(--c-surface);
           font-family:'Quicksand',sans-serif;
           font-weight:700;
           font-size:.875rem;
@@ -524,7 +524,7 @@
     if (!errEl) {
       errEl = document.createElement('p');
       errEl.className = 'form-error-banner';
-      errEl.style.cssText = 'color:#c0392b;background:#fff0f0;border:1px solid #f5c6c6;border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.9rem;';
+      errEl.style.cssText = 'color:var(--c-danger);background:var(--c-danger-bg);border:1px solid var(--c-border);border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.9rem;';
       form.prepend(errEl);
     }
     errEl.textContent = message;
