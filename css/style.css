@@ -2667,7 +2667,7 @@ ul { list-style: none; }
   opacity: 0.75;
   margin-top: 0.5rem;
 }
-.contact-info-block[data-delay="200"] .section-label { margin-top: 0.5rem; }
+.contact-info-block[data-delay="200"] { padding-top: 0.75rem; }
 
 /* Socials */
 .contact__socials {
@@ -2920,16 +2920,29 @@ ul { list-style: none; }
 }
 
 @media (max-width: 768px) {
-  .map-placeholder { height: 560px; }
+  .map-placeholder { height: auto; min-height: 0; }
+  .map-placeholder__inner {
+    position: relative;
+    display: block;
+    padding: 0;
+  }
+  .map-placeholder__map {
+    position: relative;
+    inset: auto;
+    height: 300px;
+  }
   .map-placeholder__label {
+    position: relative;
     top: auto;
-    right: 1rem;
-    bottom: 1rem;
-    width: min(380px, calc(100% - 2rem));
+    right: auto;
+    bottom: auto;
+    width: 100%;
     transform: none;
     padding: 1.75rem;
+    margin: 0;
   }
 }
+.map-placeholder__label > .section-label { margin-top: 0.5rem; }
 .map-placeholder__title {
   font-family: var(--font-display);
   font-size: clamp(1.4rem, 2.5vw, 2rem);
@@ -2965,6 +2978,7 @@ ul { list-style: none; }
   font-size: 0.7rem;
   flex-shrink: 0;
 }
+.map-placeholder__label > .btn--ghost { margin-bottom: 1rem; }
 
 /* ============================================
    RESPONSIVE — CONTACT & INNER PAGES (≤1100px)
