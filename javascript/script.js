@@ -40,6 +40,226 @@
   });
 })();
 
+/* ---- CUSTOMER: Shared login modal ---- */
+(function initLoginModal() {
+  const accountHost = document.getElementById('navAccount');
+  if (!accountHost) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'login-modal';
+  modal.id = 'loginModal';
+  modal.hidden = true;
+  modal.innerHTML = `
+    <div class="login-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
+      <button type="button" class="login-modal__close" aria-label="Close login dialog">&times;</button>
+      <div class="login-modal__card order-panel order-panel--narrow">
+        <h2 class="order-panel__title" id="loginModalTitle">Log in</h2>
+        <form class="login-modal__form" novalidate>
+          <div class="form-group">
+            <label for="loginModalEmail">Email</label>
+            <input type="email" id="loginModalEmail" name="email" autocomplete="username" required />
+          </div>
+          <div class="form-group">
+            <label for="loginModalPassword">Password</label>
+            <div class="password-field">
+              <input type="password" id="loginModalPassword" name="password" autocomplete="current-password" required />
+              <button type="button" class="password-toggle" data-password-toggle="loginModalPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path class="password-eye__outline" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye__slash" d="m3 3 18 18"/></svg>
+              </button>
+            </div>
+          </div>
+          <p class="login-modal__error" role="alert" hidden></p>
+          <button type="submit" class="btn btn--primary btn--full login-modal__submit">Log In</button>
+          <p class="order-switch">New to Santi Blinds? <a class="order-link login-modal__register" href="order.html#register">Create an account</a></p>
+        </form>
+      </div>
+    </div>`;
+  document.body.append(modal);
+
+  const form = modal.querySelector('.login-modal__form');
+  const emailInput = modal.querySelector('#loginModalEmail');
+  const passwordInput = modal.querySelector('#loginModalPassword');
+  const submitButton = modal.querySelector('.login-modal__submit');
+  const errorMessage = modal.querySelector('.login-modal__error');
+  const closeButton = modal.querySelector('.login-modal__close');
+  const dialog = modal.querySelector('.login-modal__dialog');
+  let returnFocus = null;
+  let previousOverflow = '';
+  let previousPaddingRight = '';
+  let closeTimer = 0;
+
+  function open() {
+    if (!modal.hidden) return;
+    window.clearTimeout(closeTimer);
+    returnFocus = document.activeElement;
+    previousOverflow = document.body.style.overflow;
+    previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      const currentPadding = Number.parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+      document.body.style.paddingRight = `${currentPadding + scrollbarWidth}px`;
+    }
+    modal.hidden = false;
+    modal.getBoundingClientRect();
+    modal.classList.add('is-open');
+    emailInput.focus();
+  }
+
+  function close() {
+    if (modal.hidden || modal.classList.contains('is-closing')) return;
+    modal.classList.remove('is-open');
+    modal.classList.add('is-closing');
+    document.body.style.overflow = previousOverflow;
+    document.body.style.paddingRight = previousPaddingRight;
+    closeTimer = window.setTimeout(() => {
+      modal.hidden = true;
+      modal.classList.remove('is-closing');
+      if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+        returnFocus.focus();
+      } else {
+        accountHost.querySelector('.acct__btn')?.focus();
+      }
+    }, 220);
+  }
+
+  accountHost.addEventListener('click', event => {
+    const loginLink = event.target.closest('.nav__login');
+    if (!loginLink) return;
+    event.preventDefault();
+    open();
+  });
+  document.addEventListener('santi:open-login', open);
+  closeButton.addEventListener('click', close);
+  modal.addEventListener('click', event => {
+    if (event.target === modal) close();
+  });
+  document.addEventListener('keydown', event => {
+    if (modal.hidden) return;
+    if (event.key === 'Escape') {
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href]')]
+      .filter(element => !element.hidden);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    errorMessage.hidden = true;
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!/^\S+@\S+\.\S+$/.test(email) || !password) {
+      errorMessage.textContent = 'Please enter your email and password.';
+      errorMessage.hidden = false;
+      return;
+    }
+
+    submitButton.disabled = true;
+    try {
+      const response = await fetch('portal/customer_login.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        const message = Array.isArray(data.errors) ? data.errors.join(' ') : data.errors || data.message;
+        throw new Error(message || 'Could not log you in. Please check your details and try again.');
+      }
+
+      form.reset();
+      const eventName = document.getElementById('orderApp') ? 'santi:login' : 'santi:auth';
+      window.dispatchEvent(new CustomEvent(eventName, { detail: { customer: data.customer } }));
+      close();
+    } catch (error) {
+      errorMessage.textContent = error.message || 'Could not reach the server. Please try again.';
+      errorMessage.hidden = false;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+
+  modal.querySelector('.login-modal__register').addEventListener('click', event => {
+    if (!document.getElementById('orderApp')) return;
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent('santi:register'));
+    close();
+  });
+})();
+
+/* ---- ADMIN: Mobile sidebar ---- */
+(function initAdminMobileNav() {
+  const shell = document.querySelector('.admin-shell');
+  const sidebar = shell?.querySelector('.admin-sidebar');
+  if (!shell || !sidebar) return;
+
+  sidebar.id = 'adminSidebar';
+
+  const header = document.createElement('div');
+  header.className = 'admin-mobile-header';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'admin-mobile-menu-toggle';
+  toggle.setAttribute('aria-label', 'Open admin menu');
+  toggle.setAttribute('aria-controls', sidebar.id);
+  toggle.setAttribute('aria-expanded', 'false');
+  for (let i = 0; i < 3; i += 1) {
+    const line = document.createElement('span');
+    line.setAttribute('aria-hidden', 'true');
+    toggle.append(line);
+  }
+
+  const title = document.createElement('span');
+  title.className = 'admin-mobile-header__title';
+  title.textContent = 'Admin Panel';
+  header.append(toggle, title);
+
+  const backdrop = document.createElement('button');
+  backdrop.type = 'button';
+  backdrop.className = 'admin-sidebar-backdrop';
+  backdrop.setAttribute('aria-label', 'Close admin menu');
+
+  shell.insertBefore(header, sidebar);
+  shell.append(backdrop);
+
+  const closeMenu = () => {
+    shell.classList.remove('is-sidebar-open');
+    document.body.classList.remove('admin-menu-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open admin menu');
+  };
+
+  toggle.addEventListener('click', () => {
+    const isOpen = shell.classList.toggle('is-sidebar-open');
+    document.body.classList.toggle('admin-menu-open', isOpen);
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Close admin menu' : 'Open admin menu');
+  });
+  backdrop.addEventListener('click', closeMenu);
+  sidebar.querySelectorAll('.admin-nav__link').forEach(link => {
+    link.addEventListener('click', closeMenu);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMenu();
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) closeMenu();
+  });
+})();
+
 
 /* ---- ACCOUNT MENU (nav) ----
    Facebook-style account dropdown: avatar button -> name card, "View Orders", "Log out".
@@ -2071,9 +2291,20 @@
   async function startSession(customer) {
     state.customer = customer;
     announceAuth(customer);
+    if (!state.catalog) return;
     go('customize');
     loadSavedQuotes();
   }
+
+  window.addEventListener('santi:login', event => {
+    const customer = event.detail && event.detail.customer;
+    if (customer) startSession(customer);
+  });
+  window.addEventListener('santi:register', () => {
+    clearAlert();
+    showAuth('register');
+    go('auth');
+  });
 
   $('showRegisterBtn').addEventListener('click', () => { clearAlert(); showAuth('register'); });
   $('showLoginBtn').addEventListener('click', () => { clearAlert(); showAuth('login'); });
@@ -2734,9 +2965,18 @@
       buildForm();
       renderCart();
 
+      if (state.customer) {
+        await startSession(state.customer);
+        return;
+      }
+
       const me = await api('customer_session.php');
-      if (me.success && me.logged_in) { await startSession(me.customer); }
-      else { showAuth('login'); go('auth'); }
+      if (state.customer) { await startSession(state.customer); }
+      else if (me.success && me.logged_in) { await startSession(me.customer); }
+      else {
+        showAuth(window.location.hash === '#register' ? 'register' : 'login');
+        go('auth');
+      }
     } catch (err) {
       showAlert((err && err.message) || 'Could not reach the server. Is Apache running? Open this page through http://localhost/…');
     }
