@@ -1,0 +1,445 @@
+SANTI BLINDS
+DATABASE REQUIREMENTS, ERD, AND DATA WAREHOUSE DESIGN
+======================================================================
+
+1. PURPOSE AND SCOPE
+--------------------
+This document describes the database behavior found in the repository and
+a proposed analytical warehouse for management reporting. The warehouse is
+an addition to the transactional application database; it is not a replacement
+for it. Do not run the proposed DDL against the live application database.
+
+The application currently connects through PDO to MySQL/MariaDB database
+"santiblinds", using InnoDB and utf8mb4. The canonical fresh-install source
+is database/schema.sql. It is an OLTP schema for the storefront and admin
+functions, not a reporting warehouse.
+
+2. EXISTING DATABASE REQUIREMENTS AND SOURCE MODEL
+--------------------------------------------------
+
+Database/runtime requirements discovered:
+  - MySQL or MariaDB, InnoDB, utf8mb4.
+  - PHP uses PDO with prepared statements and exception mode.
+  - Application and admin API dates are interpreted in Asia/Manila.
+  - Monetary values use DECIMAL. The app's display/seed data indicates PHP
+    pesos, but the schema has no currency_code column; confirm currency
+    before enabling multi-currency reporting.
+  - Operational database and analytical warehouse should be separate
+    schemas/databases, preferably with separate read/write credentials.
+
+Canonical operational entities:
+  owner_manager       Admin/owner login records.
+  admin_audit_log     Admin actions, optionally linked to owner_manager.
+  customer            Customer/account or guest contact; password_hash is
+                      nullable for guest-only records.
+  category            Product category.
+  product             Blind catalog, current base price and stock_qty.
+  material            Material and per-item price modifier.
+  color               Color catalog.
+  quotation           Customer quote header, total, status and validity.
+  quotation_item      Quoted product/material/color and measurements.
+  orders              One row per order line. Rows sharing order_id form
+                      one customer order; line_id identifies the row.
+  sale                One row per completed order at most; order_id is unique.
+  inquiry             Customer/product inquiry with status and timestamp.
+
+Observed operational behavior important to analytics:
+  - Order pricing is copied onto quotation/order lines. Preserve those
+    historical unit_price and total_amount values; do not recalculate old
+    orders from today's product/material prices.
+  - A quotation can have multiple lines. It can be converted to an order;
+    direct orders may have no quotation_id.
+  - Stock is held on product.stock_qty. Order triggers decrement active
+    order quantities and restore stock on cancellation/deletion. Admin
+    stock increases update the quantity directly. This is a current stock
+    balance, not a durable inventory movement ledger.
+  - The sale row is created when an order is marked Completed. Current
+    dashboard revenue uses sale.amount_paid when available, otherwise the
+    completed order's line total. Revenue date uses sale_date when present,
+    otherwise order_date.
+  - "Ready" and "Ready for Install" are legacy order statuses that reports
+    normalize to "Completed". Current API statuses are Pending, Processing,
+    Completed, and Cancelled.
+  - The source does not preserve order status history. The current status
+    can be reported; past status transitions cannot be reconstructed.
+
+3. WAREHOUSE REQUIREMENTS
+-------------------------
+
+Business questions supported:
+  - Orders, units and revenue by day/month, status, customer, product,
+    blind type, category, material and color.
+  - Average completed-order value and comparison of recorded payment to
+    the order line total.
+  - Quotation volume/value, expiry and conversion rate to orders.
+  - Inquiry volume and status by date/product.
+  - Daily available stock and low-stock products.
+
+Warehouse requirements:
+  - Store in a separate database, recommended name santiblinds_dw.
+  - Use a dimensional/star schema with surrogate keys and explicit fact
+    table grains. Keep source order/line/quote identifiers as degenerate
+    identifiers for traceability.
+  - Store numeric facts needed for aggregation, but exclude customer
+    names, email, phone, street address, password hashes, inquiry text,
+    customization notes, and audit details from the general analytics
+    warehouse.
+  - Retain historical product descriptors with Type 2 changes where
+    practical. Retain the prices and amounts recorded on each transaction.
+  - Record a daily product stock snapshot. Because source stock is a
+    mutable balance, snapshots must be captured on a schedule.
+  - Make ETL rerunnable and idempotent. Enforce uniqueness on source
+    identifiers/grains and upsert facts whose source status or sale data
+    changes.
+  - A daily load is a reasonable initial freshness target. More frequent
+    loads require change data capture or reliable source update timestamps.
+  - Normalize status aliases in ETL, but preserve raw source status in
+    staging for auditability.
+  - Normalize source datetimes to a single warehouse timezone (UTC is
+    recommended); provide Manila-local date dimensions for reports.
+  - Add source reconciliation checks: row counts, order totals versus line
+    totals, sales amounts versus completed orders, and inventory snapshots.
+
+4. PROPOSED WAREHOUSE ERD
+-------------------------
+
+ERD notation: 1-to-many from each dimension row to its matching fact rows.
+Date relationships with different meanings are separate role-playing keys.
+
+  dim_date           1 --- * fact_order
+    order_date_key, revenue_date_key
+  dim_customer       1 --- * fact_order
+  dim_status         1 --- * fact_order
+  dim_payment_method 1 --- * fact_order
+
+  dim_date           1 --- * fact_order_line
+  dim_customer       1 --- * fact_order_line
+  dim_product        1 --- * fact_order_line
+  dim_material       1 --- * fact_order_line
+  dim_color          1 --- * fact_order_line
+  dim_status         1 --- * fact_order_line
+
+  dim_date           1 --- * fact_quotation_line
+    quote_date_key, valid_until_date_key
+  dim_customer       1 --- * fact_quotation_line
+  dim_product        1 --- * fact_quotation_line
+  dim_material       1 --- * fact_quotation_line
+  dim_color          1 --- * fact_quotation_line
+  dim_status         1 --- * fact_quotation_line
+
+  dim_date           1 --- * fact_inquiry
+  dim_customer       1 --- * fact_inquiry
+  dim_product        1 --- * fact_inquiry
+  dim_status         1 --- * fact_inquiry
+
+  dim_date           1 --- * fact_inventory_snapshot
+  dim_product        1 --- * fact_inventory_snapshot
+
+All fact-table date keys refer to dim_date. Facts refer to the relevant
+customer, product, material, color, status, and payment dimensions. The
+diagram is conceptual; the DDL below is the proposed physical structure.
+
+5. PROPOSED MYSQL WAREHOUSE SCHEMA
+----------------------------------
+
+Create these tables in santiblinds_dw (or a dedicated warehouse schema).
+Use date_key in YYYYMMDD format; reserve a documented unknown-date member
+for source values that cannot be parsed.
+The following is design DDL, not a migration for the existing application.
+In production, add deployment-specific charset, engine, grants, and indexes.
+
+CREATE TABLE dim_date (
+  date_key       INT NOT NULL PRIMARY KEY,
+  calendar_date  DATE NOT NULL UNIQUE,
+  year_num       SMALLINT NOT NULL,
+  quarter_num    TINYINT NOT NULL,
+  month_num      TINYINT NOT NULL,
+  month_name     VARCHAR(12) NOT NULL,
+  day_num        TINYINT NOT NULL,
+  weekday_num    TINYINT NOT NULL,
+  weekday_name   VARCHAR(12) NOT NULL,
+  is_weekend     TINYINT(1) NOT NULL
+);
+
+CREATE TABLE dim_customer (
+  customer_key       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_customer_id INT NULL,
+  account_type       VARCHAR(16) NOT NULL,
+  valid_from          DATETIME NOT NULL,
+  valid_to            DATETIME NOT NULL,
+  is_current          TINYINT(1) NOT NULL,
+  UNIQUE KEY uq_customer_version (source_customer_id, valid_from),
+  KEY ix_customer_source (source_customer_id, is_current)
+);
+
+CREATE TABLE dim_product (
+  product_key        BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_product_id  INT NOT NULL,
+  product_name       VARCHAR(120) NOT NULL,
+  blind_type         VARCHAR(60) NOT NULL,
+  category_name      VARCHAR(80) NOT NULL,
+  valid_from         DATETIME NOT NULL,
+  valid_to           DATETIME NOT NULL,
+  is_current         TINYINT(1) NOT NULL,
+  KEY ix_product_source (source_product_id, is_current)
+);
+
+CREATE TABLE dim_material (
+  material_key       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_material_id INT NOT NULL,
+  material_name      VARCHAR(80) NOT NULL,
+  UNIQUE KEY uq_material_source (source_material_id)
+);
+
+CREATE TABLE dim_color (
+  color_key       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_color_id INT NOT NULL,
+  color_name      VARCHAR(80) NOT NULL,
+  hex_code        CHAR(7) NOT NULL,
+  UNIQUE KEY uq_color_source (source_color_id)
+);
+
+CREATE TABLE dim_status (
+  status_key      INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  status_type     VARCHAR(16) NOT NULL,
+  source_status   VARCHAR(30) NOT NULL,
+  report_status   VARCHAR(30) NOT NULL,
+  is_completed    TINYINT(1) NOT NULL DEFAULT 0,
+  is_cancelled    TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_status (status_type, source_status)
+);
+
+CREATE TABLE dim_payment_method (
+  payment_method_key INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  method_name        VARCHAR(30) NOT NULL UNIQUE
+);
+
+-- Grain: one row per distinct orders.order_id.
+-- revenue_amount follows the existing dashboard rule: for a completed
+-- order, use sale.amount_paid when present, otherwise the sum of line totals;
+-- non-completed orders have zero recognized revenue.
+CREATE TABLE fact_order (
+  order_key             BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_order_id       INT NOT NULL UNIQUE,
+  source_quotation_id   INT NULL,
+  source_sale_id        INT NULL,
+  customer_key          BIGINT NOT NULL,
+  order_date_key        INT NOT NULL,
+  revenue_date_key      INT NOT NULL,
+  status_key            INT NOT NULL,
+  payment_method_key    INT NULL,
+  line_count            INT NOT NULL,
+  unit_count            INT NOT NULL,
+  order_amount          DECIMAL(12,2) NOT NULL,
+  recorded_paid_amount  DECIMAL(12,2) NULL,
+  revenue_amount        DECIMAL(12,2) NOT NULL,
+  order_count           TINYINT NOT NULL DEFAULT 1,
+  CONSTRAINT fk_fact_order_customer
+    FOREIGN KEY (customer_key) REFERENCES dim_customer(customer_key),
+  CONSTRAINT fk_fact_order_date
+    FOREIGN KEY (order_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_fact_order_revenue_date
+    FOREIGN KEY (revenue_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_fact_order_status
+    FOREIGN KEY (status_key) REFERENCES dim_status(status_key),
+  CONSTRAINT fk_fact_order_payment
+    FOREIGN KEY (payment_method_key) REFERENCES dim_payment_method(payment_method_key)
+);
+
+-- Grain: one row per orders.line_id. Use line_amount for product-level
+-- item sales analysis; use fact_order.revenue_amount for dashboard revenue.
+CREATE TABLE fact_order_line (
+  order_line_key       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_line_id       INT NOT NULL UNIQUE,
+  source_order_id      INT NOT NULL,
+  source_quotation_id  INT NULL,
+  customer_key         BIGINT NOT NULL,
+  product_key          BIGINT NOT NULL,
+  material_key         BIGINT NOT NULL,
+  color_key            BIGINT NOT NULL,
+  order_date_key       INT NOT NULL,
+  status_key           INT NOT NULL,
+  quantity             INT NOT NULL,
+  width_cm             DECIMAL(6,1) NOT NULL,
+  height_cm            DECIMAL(6,1) NOT NULL,
+  physical_area_sqm    DECIMAL(10,4) NOT NULL,
+  billable_area_sqm    DECIMAL(10,4) NOT NULL,
+  unit_price           DECIMAL(10,2) NOT NULL,
+  line_amount          DECIMAL(12,2) NOT NULL,
+  CONSTRAINT fk_order_line_customer
+    FOREIGN KEY (customer_key) REFERENCES dim_customer(customer_key),
+  CONSTRAINT fk_order_line_product
+    FOREIGN KEY (product_key) REFERENCES dim_product(product_key),
+  CONSTRAINT fk_order_line_material
+    FOREIGN KEY (material_key) REFERENCES dim_material(material_key),
+  CONSTRAINT fk_order_line_color
+    FOREIGN KEY (color_key) REFERENCES dim_color(color_key),
+  CONSTRAINT fk_order_line_date
+    FOREIGN KEY (order_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_order_line_status
+    FOREIGN KEY (status_key) REFERENCES dim_status(status_key),
+  KEY ix_order_line_order (source_order_id)
+);
+
+-- Grain: one row per quotation_item. Conversion is derived from the
+-- quotation/order relationship; quote totals must not be summed alongside
+-- order totals as if they were separate sales.
+CREATE TABLE fact_quotation_line (
+  quotation_line_key    BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_quotation_item_id INT NOT NULL UNIQUE,
+  source_quotation_id   INT NOT NULL,
+  customer_key          BIGINT NOT NULL,
+  product_key           BIGINT NOT NULL,
+  material_key          BIGINT NOT NULL,
+  color_key             BIGINT NOT NULL,
+  quote_date_key        INT NOT NULL,
+  valid_until_date_key  INT NOT NULL,
+  status_key            INT NOT NULL,
+  quantity              INT NOT NULL,
+  width_cm              DECIMAL(6,1) NOT NULL,
+  height_cm             DECIMAL(6,1) NOT NULL,
+  quoted_unit_price     DECIMAL(10,2) NOT NULL,
+  quoted_line_amount    DECIMAL(12,2) NOT NULL,
+  is_converted          TINYINT(1) NOT NULL,
+  CONSTRAINT fk_quote_line_customer
+    FOREIGN KEY (customer_key) REFERENCES dim_customer(customer_key),
+  CONSTRAINT fk_quote_line_product
+    FOREIGN KEY (product_key) REFERENCES dim_product(product_key),
+  CONSTRAINT fk_quote_line_material
+    FOREIGN KEY (material_key) REFERENCES dim_material(material_key),
+  CONSTRAINT fk_quote_line_color
+    FOREIGN KEY (color_key) REFERENCES dim_color(color_key),
+  CONSTRAINT fk_quote_line_date
+    FOREIGN KEY (quote_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_quote_line_valid_date
+    FOREIGN KEY (valid_until_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_quote_line_status
+    FOREIGN KEY (status_key) REFERENCES dim_status(status_key),
+  KEY ix_quote_line_quote (source_quotation_id)
+);
+
+-- Grain: one row per inquiry. Do not copy the free-text message into the DW.
+CREATE TABLE fact_inquiry (
+  inquiry_key       BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  source_inquiry_id INT NOT NULL UNIQUE,
+  customer_key      BIGINT NOT NULL,
+  product_key       BIGINT NOT NULL,
+  inquiry_date_key  INT NOT NULL,
+  status_key        INT NOT NULL,
+  inquiry_count     TINYINT NOT NULL DEFAULT 1,
+  CONSTRAINT fk_inquiry_customer
+    FOREIGN KEY (customer_key) REFERENCES dim_customer(customer_key),
+  CONSTRAINT fk_inquiry_product
+    FOREIGN KEY (product_key) REFERENCES dim_product(product_key),
+  CONSTRAINT fk_inquiry_date
+    FOREIGN KEY (inquiry_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_inquiry_status
+    FOREIGN KEY (status_key) REFERENCES dim_status(status_key)
+);
+
+-- Grain: one product's available stock balance at a daily capture time.
+-- This is not a movement fact and must not be summed across dates.
+CREATE TABLE fact_inventory_snapshot (
+  snapshot_date_key INT NOT NULL,
+  product_key       BIGINT NOT NULL,
+  snapshot_at       DATETIME NOT NULL,
+  available_qty     INT NOT NULL,
+  low_stock_flag    TINYINT(1) NOT NULL,
+  PRIMARY KEY (snapshot_date_key, product_key),
+  CONSTRAINT fk_inventory_snapshot_date
+    FOREIGN KEY (snapshot_date_key) REFERENCES dim_date(date_key),
+  CONSTRAINT fk_inventory_snapshot_product
+    FOREIGN KEY (product_key) REFERENCES dim_product(product_key)
+);
+
+6. ETL AND MEASURE RULES
+------------------------
+
+Source-to-warehouse mapping:
+  customer / customer_id     -> dim_customer
+  category + product         -> dim_product
+  material                   -> dim_material
+  color                      -> dim_color
+  orders header aggregation   -> fact_order
+  orders.line_id             -> fact_order_line
+  quotation_item             -> fact_quotation_line
+  inquiry                    -> fact_inquiry
+  product.stock_qty           -> daily fact_inventory_snapshot
+  sale                       -> fact_order payment/revenue fields
+
+Key definitions:
+  - source_order_id is orders.order_id, not orders.line_id.
+  - fact_order.order_amount is SUM(orders.total_amount) for the order.
+  - fact_order.unit_count is SUM(orders.quantity); line_count is the number
+    of source order lines.
+  - fact_order.revenue_amount is populated only for normalized completed
+    orders, using the existing dashboard fallback described above.
+  - fact_order_line.line_amount is the historical source line total. Do not
+    join/sum fact_order revenue across order lines; that duplicates revenue.
+  - Quote conversion is based on whether any order references the quotation.
+    Calculate conversion rate using distinct source_quotation_id values,
+    not quotation-line row counts.
+  - physical_area_sqm = width_cm * height_cm / 10000 * quantity.
+    billable_area_sqm = GREATEST(1, width_cm * height_cm / 10000) * quantity,
+    matching the current pricing minimum of one square metre per blind.
+  - fact_inventory_snapshot.available_qty reflects the source stock_qty
+    balance. Confirm whether the business means available-to-promise or
+    physical on-hand before labeling it "on hand".
+  - Seed dim_date for the full historical range plus future quote-validity
+    dates. Use explicit unknown dimension members for missing references.
+
+7. DATA QUALITY, SECURITY, AND IMPLEMENTATION RISKS
+----------------------------------------------------
+
+Legacy schema mismatch must be resolved before production ETL:
+  - The canonical database/schema.sql and current order/customer/inquiry
+    paths use customer, quotation, quotation_item, orders, sale, inquiry.
+  - Some files still reference an older schema: portal/register.php and
+    portal/customization.php use customers, customer_accounts and
+    customizations; admin/api/activity.php uses customer_activity and the
+    older account tables; enquiries.php inserts into enquiries.
+  - database/migrate_encryption.sql also alters older pluralized table
+    names. Do not infer that these legacy tables exist in a fresh install.
+  - Reconcile these code/schema generations and select the real operational
+    source tables before executing any ETL. Do not silently union records
+    from incompatible generations.
+
+Other implementation constraints:
+  - The source has no reliable updated_at columns on order lines,
+    quotations, product/category descriptors, inquiries, or sales. An
+    incremental load based only on increasing IDs will miss status changes,
+    cancellations, edits, and delayed sale rows. Add updated_at/change-log
+    fields or use MySQL binlog CDC; otherwise use periodic full reconciliation.
+  - Current stock changes are not recorded as individual movements.
+    Add an operational inventory_transaction ledger for receipts,
+    reservations, releases, adjustments, and order fulfillment if movement
+    and historical stock-flow analysis is required. Do not fabricate old
+    movement rows from current balances.
+  - Current customer fields are personal data. The canonical schema stores
+    name, email, phone, and address directly; encryption documentation and
+    migration scripts refer to older table names. Verify the deployed
+    database and encryption state. Keep PII and free text out of the
+    warehouse, restrict source IDs, secure staging/backups, and define
+    retention and deletion propagation.
+  - Password hashes, admin audit details, inquiry messages, and customization
+    notes are not analytical attributes and must not be copied.
+  - Use separate least-privilege ETL and read-only analyst roles. Encrypt
+    backups and connections; restrict warehouse access to aggregated or
+    pseudonymous data.
+  - Add an explicit currency code if currency could vary. Verify source and
+    reporting currency before producing financial totals.
+
+8. RECOMMENDED DELIVERY ORDER
+-----------------------------
+  1. Confirm production schema, currency, timezone, status definitions,
+     inventory quantity semantics, and revenue accounting definition.
+  2. Reconcile legacy application files with the canonical schema.
+  3. Provision a separate warehouse database and restricted ETL/analyst users.
+  4. Create dimensions, unknown members, and date rows; perform a
+     deduplicated historical backfill.
+  5. Capture daily inventory snapshots and schedule idempotent fact loads.
+  6. Reconcile row counts and financial totals with the admin reports.
+  7. Add CDC or source change timestamps before relying on incremental
+     updates for mutable records.
+
+END OF DESIGN

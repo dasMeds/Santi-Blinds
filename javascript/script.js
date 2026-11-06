@@ -542,6 +542,12 @@
       }
     });
 
+    if (form.phone.value.trim() && !window.SantiPhone.isValid(form.phone.value)) {
+      setError(form.phone, 'Enter a valid Philippine mobile number, such as +63 917 123 4567.');
+      shakeField(form.phone);
+      valid = false;
+    }
+
     const emailVal = form.email.value.trim();
     if (!emailVal) {
       setError(form.email, 'Email address is required.');
@@ -2318,7 +2324,7 @@
     const errs = [];
     if (!f.full_name) errs.push('Please enter your full name.');
     if (!/^\S+@\S+\.\S+$/.test(f.email)) errs.push('Please enter a valid email address.');
-    if (!/^[0-9+()\-\s]{7,20}$/.test(f.phone)) errs.push('Please enter a valid contact number.');
+    if (!window.SantiPhone.isValid(f.phone)) errs.push('Enter a valid Philippine mobile number, such as +63 917 123 4567.');
     if (!f.address) errs.push('Please enter your installation / delivery address.');
     if (f.password.length < 8) errs.push('Password must be at least 8 characters.');
     else if (f.password !== $('rConfirm').value) errs.push('The two passwords do not match.');

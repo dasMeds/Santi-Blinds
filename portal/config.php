@@ -101,13 +101,13 @@ function readCustomer(array $c, bool $needAddress): array {
     $x = [
         'full_name' => str($c, 'full_name', 160),
         'email'     => strtolower(str($c, 'email', 160)),
-        'phone'     => str($c, 'phone', 40),
+        'phone'     => normalizePhilippineMobileNumber(str($c, 'phone', 40)) ?? '',
         'address'   => str($c, 'address', 255),
     ];
     $e = [];
     if ($x['full_name'] === '') $e[] = 'Your full name is required.';
     if (!filter_var($x['email'], FILTER_VALIDATE_EMAIL)) $e[] = 'A valid email address is required.';
-    if (!preg_match('/^[0-9+()\-\s]{7,20}$/', $x['phone'])) $e[] = 'A valid contact number is required.';
+    if ($x['phone'] === '') $e[] = 'Enter a valid Philippine mobile number, such as +63 917 123 4567.';
     if ($needAddress && $x['address'] === '') $e[] = 'Address is required.';
     return [$x, $e];
 }
