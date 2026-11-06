@@ -2742,6 +2742,28 @@ html[data-theme="dark"] .login-modal__submit:hover {
   flex-wrap: wrap;
   margin-top: 0.5rem;
 }
+.contact__socials .btn {
+  gap: 0.65rem;
+}
+.social-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.social-icon__detail {
+  fill: currentColor;
+  stroke: none;
+}
+.social-icon--facebook,
+.social-icon--pinterest {
+  fill: currentColor;
+  stroke: none;
+}
 
 /* Form */
 .btn--sm { padding: 10px 20px; font-size: 0.7rem; }
