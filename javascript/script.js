@@ -724,7 +724,7 @@
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer: { full_name: `${v(form.fname)} ${v(form.lname)}`, email: v(form.email), phone: v(form.phone), address: v(form.city) },
+          customer: { full_name: `${v(form.fname)} ${v(form.lname)}`, email: v(form.email), phone: window.SantiPhone.toInternational(v(form.phone)), address: v(form.city) },
           product_id: Number(form.interest.value),
           message: [v(form.message), ...extra].filter(Boolean).join('\n'),
         }),
@@ -2318,7 +2318,7 @@
   $('custRegisterForm').addEventListener('submit', async (e) => {
     e.preventDefault(); clearAlert();
     const f = {
-      full_name: $('rName').value.trim(), email: $('rEmail').value.trim(), phone: $('rPhone').value.trim(),
+      full_name: $('rName').value.trim(), email: $('rEmail').value.trim(), phone: window.SantiPhone.toInternational($('rPhone').value.trim()),
       address: $('rAddress').value.trim(), password: $('rPassword').value,
     };
     const errs = [];

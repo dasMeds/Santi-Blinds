@@ -2707,6 +2707,27 @@ ul { list-style: none; }
   border-color: rgba(var(--c-rgb-accent),0.5);
   background: rgba(var(--c-rgb-text),0.06);
 }
+.phone-input {
+  display: flex;
+  align-items: stretch;
+}
+.phone-input__prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--c-cream);
+  background: rgba(var(--c-rgb-text),0.08);
+  border: 1px solid rgba(var(--c-rgb-text),0.1);
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.phone-input input {
+  min-width: 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.phone-input:focus-within .phone-input__prefix {
+  border-color: rgba(var(--c-rgb-accent),0.5);
+}
 .form-group select { cursor: pointer; appearance: none; }
 .form-group textarea { resize: vertical; min-height: 110px; }
 .form-row {

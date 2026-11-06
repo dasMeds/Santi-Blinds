@@ -262,7 +262,10 @@
             <div class="form-row">
               <div class="form-group">
                 <label for="phone">Phone / Mobile</label>
-                <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="+63 917 123 4567" />
+                <div class="phone-input">
+                  <span class="phone-input__prefix" aria-hidden="true">+63</span>
+                  <input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="tel" placeholder="917 123 4567" />
+                </div>
               </div>
               <div class="form-group">
                 <label for="city">City / Municipality</label>
