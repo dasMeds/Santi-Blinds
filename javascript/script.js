@@ -4,6 +4,43 @@
 
 'use strict';
 
+/* ---- PUBLIC SITE: Color theme toggle ---- */
+(function initThemeToggle() {
+  const nav = document.getElementById('nav');
+  const hamburger = document.getElementById('hamburger');
+  if (!nav || !hamburger) return;
+
+  const themeToggle = document.createElement('button');
+  themeToggle.type = 'button';
+  themeToggle.className = 'theme-toggle';
+  themeToggle.innerHTML = `
+    <svg class="theme-toggle__moon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z" />
+    </svg>
+    <svg class="theme-toggle__sun" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+    </svg>`;
+
+  function applyTheme(theme) {
+    const isDark = theme === 'dark';
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} mode`);
+    themeToggle.title = `Switch to ${isDark ? 'light' : 'dark'} mode`;
+  }
+
+  const savedTheme = localStorage.getItem('santi-theme');
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+
+  themeToggle.addEventListener('click', () => {
+    const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('santi-theme', nextTheme);
+    applyTheme(nextTheme);
+  });
+
+  hamburger.parentElement.insertBefore(themeToggle, hamburger);
+})();
+
 /* ---- NAV: Scroll & Mobile Toggle ---- */
 (function initNav() {
   const nav = document.getElementById('nav');
