@@ -55,10 +55,15 @@
           <option value="">All statuses</option><option>Pending</option><option>Processing</option>
           <option>Completed</option><option>Cancelled</option>
         </select>
+        <select id="orderArchiveFilter" aria-label="Filter orders by archive status">
+          <option value="0">Active orders</option>
+          <option value="1">Archived orders</option>
+          <option value="all">All orders</option>
+        </select>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table" id="ordersTable">
-          <thead><tr><th>ID</th><th>Customer</th><th>Product</th><th>Qty</th><th>Amount</th><th>Status</th><th>Date</th><th>View</th></tr></thead>
+          <thead><tr><th>ID</th><th>Customer</th><th>Product</th><th>Qty</th><th>Amount</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

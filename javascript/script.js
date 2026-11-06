@@ -1407,10 +1407,11 @@
       ordersPerPage = perPage;
       const search = document.getElementById('orderSearch').value.trim();
       const status = document.getElementById('orderStatusFilter').value;
+      const archived = document.getElementById('orderArchiveFilter').value;
       const from = document.getElementById('orderFrom').value;
       const to = document.getElementById('orderTo').value;
       const payment_method = document.getElementById('orderPaymentFilter').value;
-      const data = await adminApiGet('orders.php', { search, status, from, to, payment_method, page, per_page: perPage });
+      const data = await adminApiGet('orders.php', { search, status, archived, from, to, payment_method, page, per_page: perPage });
       if (!data) return;
       if (!data.success) { tbody.innerHTML = emptyRow(8, data.message); return; }
       ordersPage = data.pagination.page;
@@ -1424,7 +1425,12 @@
             ${['Pending', 'Processing', 'Completed', 'Cancelled'].map(status => `<option${status === o.status ? ' selected' : ''}>${status}</option>`).join('')}
           </select></td>
           <td>${fmtDate(o.order_date)}</td>
-          <td><button class="btn btn--ghost" data-view="${o.order_id}">View</button></td>
+          <td><div class="admin-order-actions">
+            <button type="button" class="btn btn--ghost btn--sm" data-view="${o.order_id}">View</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-toggle-order-archive="${o.order_id}" data-archived="${Number(o.is_archived) ? '1' : '0'}">
+              ${Number(o.is_archived) ? 'Unarchive' : 'Archive'}
+            </button>
+          </div></td>
         </tr>
       `).join('') : emptyRow(8, 'No orders found.');
       renderAdminPagination(document.getElementById('ordersPagination'), data.pagination, loadOrders);
@@ -1435,6 +1441,26 @@
     statusSel.addEventListener('change', syncPay);
 
     tbody.addEventListener('click', async (e) => {
+      const archiveButton = e.target.closest('[data-toggle-order-archive]');
+      if (archiveButton) {
+        const archived = archiveButton.dataset.archived !== '1';
+        archiveButton.disabled = true;
+        try {
+          const result = await adminApiPost('order_archive.php', {
+            id: Number(archiveButton.dataset.toggleOrderArchive),
+            archived,
+          });
+          if (!result || !result.success) {
+            alert((result && result.message) || 'Could not update archive status.');
+          }
+          await loadOrders(ordersPage, ordersPerPage);
+        } catch (error) {
+          alert(error.message || 'Could not update archive status.');
+          await loadOrders(ordersPage, ordersPerPage);
+        }
+        return;
+      }
+
       const btn = e.target.closest('[data-view]');
       if (!btn) return;
       const data = await adminApiGet('orders.php', { id: btn.dataset.view });
@@ -1508,6 +1534,7 @@
     const resetOrderPage = () => loadOrders(1, ordersPerPage);
     document.getElementById('orderSearch').addEventListener('input', debounce(resetOrderPage, 250));
     document.getElementById('orderStatusFilter').addEventListener('change', resetOrderPage);
+    document.getElementById('orderArchiveFilter').addEventListener('change', resetOrderPage);
     document.getElementById('orderPaymentFilter').addEventListener('change', resetOrderPage);
     document.getElementById('orderFrom').addEventListener('change', resetOrderPage);
     document.getElementById('orderTo').addEventListener('change', resetOrderPage);

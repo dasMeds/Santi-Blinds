@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 //  Santi Blinds — Admin API: orders
-//  GET  ?search=&status=&from=&to=&payment_method= -> filtered order list
+//  GET  ?search=&status=&from=&to=&payment_method=&archived= -> filtered order list
 //  GET  ?id=12             -> one order with its items + sale
 //  POST {id,status,payment_method} -> update status; a Completed
 //        order is recorded in `sale`, any other status removes it.
@@ -25,7 +25,8 @@ if ($method === 'GET') {
                     CASE WHEN MAX(o.status) IN ('Ready', 'Ready for Install') THEN 'Completed'
                          ELSE MAX(o.status) END AS status,
                     MIN(o.order_date) AS order_date,
-                    SUM(o.total_amount) AS amount, MAX(o.quotation_id) AS quotation_id
+                    SUM(o.total_amount) AS amount, MAX(o.quotation_id) AS quotation_id,
+                    MAX(o.is_archived) AS is_archived
              FROM orders o JOIN customer c ON c.customer_id = o.customer_id
              WHERE o.order_id = :id
              GROUP BY o.order_id, c.full_name, c.phone, c.email, c.address"
@@ -63,6 +64,12 @@ if ($method === 'GET') {
 
     // ---- list ----
     $where = []; $params = [];
+    $archiveFilter = (string)($_GET['archived'] ?? '0');
+    if (!in_array($archiveFilter, ['0', '1', 'all'], true)) fail(422, 'Invalid archive filter.');
+    if ($archiveFilter !== 'all') {
+        $where[] = 'o.is_archived = :is_archived';
+        $params[':is_archived'] = (int)$archiveFilter;
+    }
     $statusFilter = (string)($_GET['status'] ?? '');
     if ($statusFilter !== '') {
         if (!in_array($statusFilter, ORDER_STATUSES, true)) fail(422, 'Invalid order status filter.');
@@ -108,7 +115,8 @@ if ($method === 'GET') {
                    SUM(o.quantity) AS quantity, SUM(o.total_amount) AS amount,
                    MIN(o.order_date) AS order_date, MAX(o.quotation_id) AS quotation_id,
                    GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products,
-                   MAX(s.payment_method) AS payment_method
+                   MAX(s.payment_method) AS payment_method,
+                   MAX(o.is_archived) AS is_archived
             FROM orders o
             JOIN customer c ON c.customer_id = o.customer_id
             JOIN product  p ON p.product_id  = o.product_id

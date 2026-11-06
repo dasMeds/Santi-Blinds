@@ -3,8 +3,8 @@ require_once __DIR__ . '/config.php';
 requireLogin();
 $pdo = getDB();
 
-$totalOrders    = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders")->fetchColumn();
-$pendingOrders  = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders WHERE status = 'Pending'")->fetchColumn();
+$totalOrders    = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders WHERE is_archived = 0")->fetchColumn();
+$pendingOrders  = (int)$pdo->query("SELECT COUNT(DISTINCT order_id) FROM orders WHERE is_archived = 0 AND status = 'Pending'")->fetchColumn();
 $totalCustomers = (int)$pdo->query("SELECT COUNT(*) FROM customer")->fetchColumn();
 
 $revenueStats = $pdo->query(
@@ -38,6 +38,7 @@ $recentOrders = $pdo->query(
      FROM orders o
      JOIN customer c ON c.customer_id = o.customer_id
      JOIN product p  ON p.product_id  = o.product_id
+     WHERE o.is_archived = 0
      GROUP BY o.order_id, c.full_name
      ORDER BY order_date DESC, o.order_id DESC LIMIT 5"
 )->fetchAll();
@@ -47,6 +48,7 @@ $statusBreakdown = $pdo->query(
                  ELSE status END AS status,
             COUNT(DISTINCT order_id) AS count
      FROM orders
+     WHERE is_archived = 0
      GROUP BY CASE WHEN status IN ('Ready', 'Ready for Install') THEN 'Completed'
                    ELSE status END"
 )->fetchAll();

@@ -3935,8 +3935,8 @@ ul { list-style: none; }
   min-width: 1.8rem;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
-  background: rgba(var(--c-rgb-body), 0.18);
-  color: var(--c-cream);
+  background: var(--c-danger);
+  color: var(--c-black);
   font-size: 0.7rem;
   line-height: 1.2;
   text-align: center;
@@ -4185,6 +4185,11 @@ ul { list-style: none; }
 .admin-table .btn--sm {
   padding: 6px 14px;
   font-size: 0.68rem;
+}
+.admin-order-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .admin-badge {
