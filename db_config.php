@@ -14,6 +14,8 @@ define('MAIL_FROM',         'your-sending-gmail@gmail.com');   // the Gmail that
 define('MAIL_TO',           'where-you-receive-it@gmail.com'); // where enquiries are delivered
 define('MAIL_APP_PASSWORD', 'xxxx xxxx xxxx xxxx');           // 16-char Google App Password
 
+require_once __DIR__ . '/phone_number.php';
+
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo === null) {

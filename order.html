@@ -84,7 +84,13 @@
           <div class="form-group"><label for="rName">Full name</label><input id="rName" autocomplete="name" required /></div>
           <div class="form-row">
             <div class="form-group"><label for="rEmail">Email</label><input type="email" id="rEmail" autocomplete="email" required /></div>
-            <div class="form-group"><label for="rPhone">Contact number</label><input type="tel" id="rPhone" autocomplete="tel" placeholder="0917 123 4567" required /></div>
+            <div class="form-group">
+              <label for="rPhone">Contact number</label>
+              <div class="phone-input">
+                <span class="phone-input__prefix" aria-hidden="true">+63</span>
+                <input type="tel" id="rPhone" autocomplete="tel-national" inputmode="tel" placeholder="917 123 4567" required />
+              </div>
+            </div>
           </div>
           <div class="form-group"><label for="rAddress">Installation / delivery address</label><input id="rAddress" autocomplete="street-address" required /></div>
           <div class="form-row">
@@ -127,7 +133,7 @@
             </fieldset>
 
             <div class="form-row">
-              <div class="form-group"><label for="cWidth">Width (cm)</label><input type="number" id="cWidth" inputmode="decimal" step="0.1" required /></div>
+              <div class="form-group"><label for="cWidth">Wi  dth (cm)</label><input type="number" id="cWidth" inputmode="decimal" step="0.1" required /></div>
               <div class="form-group"><label for="cHeight">Height (cm)</label><input type="number" id="cHeight" inputmode="decimal" step="0.1" required /></div>
             </div>
             <div class="form-row">
@@ -314,6 +320,7 @@
     </div>
   </footer>
 
+  <script src="javascript/phone-format.js"></script>
   <script src="javascript/script.js"></script>
 </body>
 </html>

@@ -322,6 +322,72 @@ ul { list-style: none; }
 .nav__hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
 .nav__hamburger.open span:nth-child(2) { opacity: 0; }
 .nav__hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  margin-left: 1rem;
+  color: var(--c-white);
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.theme-toggle:hover {
+  color: var(--c-tan);
+  background: var(--c-section);
+  border-color: var(--c-tan);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.theme-toggle__sun,
+html[data-theme="dark"] .theme-toggle__moon { display: none; }
+html[data-theme="dark"] .theme-toggle__sun { display: block; }
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --c-black: #101113;
+  --c-dark: #17181a;
+  --c-navy: #202226;
+  --c-tan: #d2b178;
+  --c-cream: #e4e0d8;
+  --c-white: #f7f5f0;
+  --c-accent: var(--c-tan);
+  --c-surface: #202226;
+  --c-section: #1b1d20;
+  --c-body: #d1d1d1;
+  --c-muted: #a4a7ad;
+  --c-border: #393c42;
+  --c-rgb-text: 247, 245, 240;
+  --c-rgb-white: 32, 34, 38;
+  --c-rgb-body: 209, 209, 209;
+  --c-rgb-section: 27, 29, 32;
+  --c-rgb-accent: 210, 177, 120;
+  --c-rgb-shadow: 0, 0, 0;
+  --c-rgb-overlay: 0, 0, 0;
+  --c-danger-bg: #3a211f;
+  --c-success-bg: #1d3326;
+  --c-warning-bg: #382f1e;
+  --c-info-bg: #1e2c40;
+}
+html[data-theme="dark"] .nav__logo-img { filter: brightness(0) invert(1); }
+html[data-theme="dark"] .login-modal__submit,
+html[data-theme="dark"] .login-modal__submit:hover {
+  background: var(--c-tan);
+  color: #171717;
+}
 
 /* ============================================
    HERO
@@ -378,7 +444,7 @@ ul { list-style: none; }
 .hero__title {
   font-family: var(--font-display);
   font-size: clamp(4rem, 11vw, 10rem);
-  line-height: 0.9;
+  line-height: 1.05;
   letter-spacing: 0.01em;
   color: var(--c-white);
   margin-bottom: 2rem;
@@ -2047,7 +2113,7 @@ ul { list-style: none; }
 .page-hero__title {
   font-family: var(--font-display);
   font-size: clamp(3rem, 8vw, 7rem);
-  line-height: 0.95;
+  line-height: 1.08;
   letter-spacing: 0.02em;
   color: var(--c-white);
   margin-bottom: 1.5rem;
@@ -2676,6 +2742,28 @@ ul { list-style: none; }
   flex-wrap: wrap;
   margin-top: 0.5rem;
 }
+.contact__socials .btn {
+  gap: 0.65rem;
+}
+.social-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.social-icon__detail {
+  fill: currentColor;
+  stroke: none;
+}
+.social-icon--facebook,
+.social-icon--pinterest {
+  fill: currentColor;
+  stroke: none;
+}
 
 /* Form */
 .btn--sm { padding: 10px 20px; font-size: 0.7rem; }
@@ -2706,6 +2794,27 @@ ul { list-style: none; }
   outline: none;
   border-color: rgba(var(--c-rgb-accent),0.5);
   background: rgba(var(--c-rgb-text),0.06);
+}
+.phone-input {
+  display: flex;
+  align-items: stretch;
+}
+.phone-input__prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--c-cream);
+  background: rgba(var(--c-rgb-text),0.08);
+  border: 1px solid rgba(var(--c-rgb-text),0.1);
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.phone-input input {
+  min-width: 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.phone-input:focus-within .phone-input__prefix {
+  border-color: rgba(var(--c-rgb-accent),0.5);
 }
 .form-group select { cursor: pointer; appearance: none; }
 .form-group textarea { resize: vertical; min-height: 110px; }
@@ -4591,6 +4700,7 @@ ul { list-style: none; }
   .nav__links { margin-left: 0; }
   .nav__account { margin-left: auto; margin-right: 0.5rem; }
   .acct__menu { position: fixed; top: calc(var(--nav-h) + 8px); right: 12px; left: 12px; width: auto; }
+  .theme-toggle { margin-left: 0; }
 }
 
 /* ---- My Orders page ---- */
@@ -5060,6 +5170,12 @@ body textarea::placeholder {
 
   .nav__account {
     margin-right: 0.25rem;
+  }
+
+  .theme-toggle {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
   }
 
   .hero__cta {

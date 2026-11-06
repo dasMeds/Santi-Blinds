@@ -46,7 +46,8 @@ function clean(string $value): string {
 $fname     = clean($_POST['fname']     ?? '');
 $lname     = clean($_POST['lname']     ?? '');
 $email     = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
-$phone     = clean($_POST['phone']     ?? '');
+$phoneInput = clean($_POST['phone']    ?? '');
+$phone     = $phoneInput === '' ? '' : (normalizePhilippineMobileNumber($phoneInput) ?? '');
 $city      = clean($_POST['city']      ?? '');
 $interest  = clean($_POST['interest']  ?? '');
 $preferred = clean($_POST['preferred'] ?? '');
@@ -63,6 +64,9 @@ if (empty($fname))  $errors[] = 'First name is required.';
 if (empty($lname))  $errors[] = 'Last name is required.';
 if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $errors[] = 'A valid email address is required.';
+}
+if ($phoneInput !== '' && $phone === '') {
+    $errors[] = 'Enter a valid Philippine mobile number, such as +63 917 123 4567.';
 }
 if ($consent !== 1) $errors[] = 'You must agree to be contacted.';
 

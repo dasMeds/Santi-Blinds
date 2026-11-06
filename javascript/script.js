@@ -4,6 +4,43 @@
 
 'use strict';
 
+/* ---- PUBLIC SITE: Color theme toggle ---- */
+(function initThemeToggle() {
+  const nav = document.getElementById('nav');
+  const hamburger = document.getElementById('hamburger');
+  if (!nav || !hamburger) return;
+
+  const themeToggle = document.createElement('button');
+  themeToggle.type = 'button';
+  themeToggle.className = 'theme-toggle';
+  themeToggle.innerHTML = `
+    <svg class="theme-toggle__moon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.2 15.1A8.5 8.5 0 0 1 8.9 3.8 8.5 8.5 0 1 0 20.2 15.1Z" />
+    </svg>
+    <svg class="theme-toggle__sun" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+    </svg>`;
+
+  function applyTheme(theme) {
+    const isDark = theme === 'dark';
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} mode`);
+    themeToggle.title = `Switch to ${isDark ? 'light' : 'dark'} mode`;
+  }
+
+  const savedTheme = localStorage.getItem('santi-theme');
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+
+  themeToggle.addEventListener('click', () => {
+    const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('santi-theme', nextTheme);
+    applyTheme(nextTheme);
+  });
+
+  hamburger.parentElement.insertBefore(themeToggle, hamburger);
+})();
+
 /* ---- NAV: Scroll & Mobile Toggle ---- */
 (function initNav() {
   const nav = document.getElementById('nav');
@@ -542,6 +579,12 @@
       }
     });
 
+    if (form.phone.value.trim() && !window.SantiPhone.isValid(form.phone.value)) {
+      setError(form.phone, 'Enter a valid Philippine mobile number, such as +63 917 123 4567.');
+      shakeField(form.phone);
+      valid = false;
+    }
+
     const emailVal = form.email.value.trim();
     if (!emailVal) {
       setError(form.email, 'Email address is required.');
@@ -718,7 +761,7 @@
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer: { full_name: `${v(form.fname)} ${v(form.lname)}`, email: v(form.email), phone: v(form.phone), address: v(form.city) },
+          customer: { full_name: `${v(form.fname)} ${v(form.lname)}`, email: v(form.email), phone: window.SantiPhone.toInternational(v(form.phone)), address: v(form.city) },
           product_id: Number(form.interest.value),
           message: [v(form.message), ...extra].filter(Boolean).join('\n'),
         }),
@@ -2339,13 +2382,13 @@
   $('custRegisterForm').addEventListener('submit', async (e) => {
     e.preventDefault(); clearAlert();
     const f = {
-      full_name: $('rName').value.trim(), email: $('rEmail').value.trim(), phone: $('rPhone').value.trim(),
+      full_name: $('rName').value.trim(), email: $('rEmail').value.trim(), phone: window.SantiPhone.toInternational($('rPhone').value.trim()),
       address: $('rAddress').value.trim(), password: $('rPassword').value,
     };
     const errs = [];
     if (!f.full_name) errs.push('Please enter your full name.');
     if (!/^\S+@\S+\.\S+$/.test(f.email)) errs.push('Please enter a valid email address.');
-    if (!/^[0-9+()\-\s]{7,20}$/.test(f.phone)) errs.push('Please enter a valid contact number.');
+    if (!window.SantiPhone.isValid(f.phone)) errs.push('Enter a valid Philippine mobile number, such as +63 917 123 4567.');
     if (!f.address) errs.push('Please enter your installation / delivery address.');
     if (f.password.length < 8) errs.push('Password must be at least 8 characters.');
     else if (f.password !== $('rConfirm').value) errs.push('The two passwords do not match.');
