@@ -124,8 +124,11 @@ function quotationRef(int $id): string {
 
 /** Active | Ordered | Expired. "Expired" is derived from valid_until, not stored. */
 function quotationStatus(array $q): string {
-    if (($q['status'] ?? '') === 'Ordered') return 'Ordered';
-    return strtotime((string)$q['valid_until']) < time() ? 'Expired' : 'Active';
+    $stored = (string)($q['status'] ?? '');
+    if ($stored === 'Ordered') return 'Ordered';
+    if (strtotime((string)$q['valid_until']) < time()) return 'Expired';
+    if (in_array($stored, ['Pending', 'Returned'], true)) return $stored;
+    return 'Active';
 }
 
 /**

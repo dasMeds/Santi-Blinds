@@ -6,10 +6,49 @@ $pdo = getDB();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = requestBody();
     $quotationId = (int)($body['quotation_id'] ?? 0);
-    $status = (string)($body['status'] ?? '');
+    $action = (string)($body['action'] ?? '');
     if ($quotationId < 1) fail(422, 'A valid quotation id is required.');
-    if (!in_array($status, ['Active', 'Ordered', 'Expired'], true)) fail(422, 'Invalid quotation status.');
 
+    if ($action === 'return_quote') {
+        $pdo->beginTransaction();
+        try {
+            $q = $pdo->prepare("SELECT status, valid_until FROM quotation WHERE quotation_id = :id FOR UPDATE");
+            $q->execute([':id' => $quotationId]);
+            $quote = $q->fetch();
+            if (!$quote) { $pdo->rollBack(); fail(404, 'Quotation not found.'); }
+            if ($quote['status'] === 'Ordered') { $pdo->rollBack(); fail(409, 'This quotation has already been ordered.'); }
+            $items = $body['items'] ?? [];
+            if (!is_array($items) || !$items) { $pdo->rollBack(); fail(422, 'Quotation items are required.'); }
+            $update = $pdo->prepare("UPDATE quotation_item SET unit_price = :u, total_amount = :t WHERE quotation_item_id = :i AND quotation_id = :q");
+            $sum = 0;
+            foreach ($items as $item) {
+                $itemId = (int)($item['quotation_item_id'] ?? 0);
+                $unit = filter_var($item['unit_price'] ?? null, FILTER_VALIDATE_FLOAT);
+                if ($itemId < 1 || $unit === false || $unit < 0 || $unit > 10000000) {
+                    $pdo->rollBack(); fail(422, 'Each item must have a valid non-negative unit price.');
+                }
+                $find = $pdo->prepare("SELECT quantity FROM quotation_item WHERE quotation_item_id = :i AND quotation_id = :q");
+                $find->execute([':i' => $itemId, ':q' => $quotationId]);
+                $qty = $find->fetchColumn();
+                if (!$qty) { $pdo->rollBack(); fail(422, 'An item does not belong to this quotation.'); }
+                $lineTotal = round((float)$unit * (int)$qty, 2);
+                $update->execute([':u' => round((float)$unit, 2), ':t' => $lineTotal, ':i' => $itemId, ':q' => $quotationId]);
+                $sum += $lineTotal;
+            }
+            $validDays = max(1, min(90, (int)($body['valid_days'] ?? 14)));
+            $pdo->prepare("UPDATE quotation SET total_amount = :total, status = 'Returned', valid_until = DATE_ADD(NOW(), INTERVAL $validDays DAY) WHERE quotation_id = :id")
+                ->execute([':total' => round($sum, 2), ':id' => $quotationId]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'message' => 'Quotation returned to customer.']);
+            exit;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    $status = (string)($body['status'] ?? '');
+    if (!in_array($status, ['Active', 'Pending', 'Returned', 'Ordered', 'Expired'], true)) fail(422, 'Invalid quotation status.');
     $error = updateQuotationStatus($pdo, $quotationId, $status);
     if ($error !== null) fail($error === 'Quotation not found.' ? 404 : 409, $error);
     echo json_encode(['success' => true]);
@@ -56,6 +95,7 @@ if (in_array($statusFilter, ['Active', 'Ordered', 'Expired'], true)) {
     $where[] = "CASE
         WHEN q.status = 'Ordered' THEN 'Ordered'
         WHEN q.valid_until < NOW() THEN 'Expired'
+        WHEN q.status IN ('Pending', 'Returned') THEN q.status
         ELSE 'Active'
     END = :status";
     $params[':status'] = $statusFilter;
@@ -69,6 +109,7 @@ $sql = "SELECT q.quotation_id, q.total_amount, q.status AS stored_status, q.vali
                CASE
                    WHEN q.status = 'Ordered' THEN 'Ordered'
                    WHEN q.valid_until < NOW() THEN 'Expired'
+                   WHEN q.status IN ('Pending', 'Returned') THEN q.status
                    ELSE 'Active'
                END AS display_status
         FROM quotation q JOIN customer c ON c.customer_id = q.customer_id";
@@ -101,7 +142,7 @@ if (!$rows) {
 $ids = array_map('intval', array_column($rows, 'quotation_id'));
 $in = implode(',', array_fill(0, count($ids), '?'));
 $itemStmt = $pdo->prepare(
-    "SELECT qi.quotation_id, p.name AS product, p.blind_type, m.name AS material, col.name AS color,
+    "SELECT qi.quotation_item_id, qi.quotation_id, p.name AS product, p.blind_type, m.name AS material, col.name AS color,
             qi.width_cm, qi.height_cm, qi.quantity, qi.unit_price, qi.total_amount
      FROM quotation_item qi
      JOIN product p ON p.product_id = qi.product_id

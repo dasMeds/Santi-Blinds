@@ -38,6 +38,7 @@ try {
         if ($existingOrder->fetchColumn()) { $pdo->rollBack(); respond(['success' => false, 'message' => 'An order has already been placed from this quotation.'], 409); }
         if ($q['status'] === 'Ordered') { $pdo->rollBack(); respond(['success' => false, 'message' => 'An order has already been placed from this quotation.'], 409); }
         if ($q['status'] === 'Expired') { $pdo->rollBack(); respond(['success' => false, 'message' => 'This quotation has expired. Please design your blinds again to get a new one.'], 409); }
+        if ($q['status'] !== 'Returned') { $pdo->rollBack(); respond(['success' => false, 'message' => 'This quotation is waiting for Santi Blinds to review and return it.'], 409); }
 
         $lines       = $q['items'];
         $total       = $q['total_amount'];

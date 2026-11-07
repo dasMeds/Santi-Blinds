@@ -12,6 +12,10 @@ requireLogin();
 $pdo    = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Older database installations may not have the optional order archive column.
+$hasArchiveColumn = (bool)$pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_archived'")->fetchColumn();
+$archiveSelect = $hasArchiveColumn ? 'MAX(o.is_archived) AS is_archived' : '0 AS is_archived';
+
 const PAYMENT_METHODS = ['Cash', 'GCash', 'Bank Transfer'];
 
 if ($method === 'GET') {
@@ -26,7 +30,7 @@ if ($method === 'GET') {
                          ELSE MAX(o.status) END AS status,
                     MIN(o.order_date) AS order_date,
                     SUM(o.total_amount) AS amount, MAX(o.quotation_id) AS quotation_id,
-                    MAX(o.is_archived) AS is_archived
+                    $archiveSelect
              FROM orders o JOIN customer c ON c.customer_id = o.customer_id
              WHERE o.order_id = :id
              GROUP BY o.order_id, c.full_name, c.phone, c.email, c.address"
@@ -67,8 +71,13 @@ if ($method === 'GET') {
     $archiveFilter = (string)($_GET['archived'] ?? '0');
     if (!in_array($archiveFilter, ['0', '1', 'all'], true)) fail(422, 'Invalid archive filter.');
     if ($archiveFilter !== 'all') {
-        $where[] = 'o.is_archived = :is_archived';
-        $params[':is_archived'] = (int)$archiveFilter;
+        if ($hasArchiveColumn) {
+            $where[] = 'o.is_archived = :is_archived';
+            $params[':is_archived'] = (int)$archiveFilter;
+        } elseif ($archiveFilter === '1') {
+            // No archive column means all existing orders are active.
+            $where[] = '1 = 0';
+        }
     }
     $statusFilter = (string)($_GET['status'] ?? '');
     if ($statusFilter !== '') {
@@ -116,7 +125,7 @@ if ($method === 'GET') {
                    MIN(o.order_date) AS order_date, MAX(o.quotation_id) AS quotation_id,
                    GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS products,
                    MAX(s.payment_method) AS payment_method,
-                   MAX(o.is_archived) AS is_archived
+                   $archiveSelect
             FROM orders o
             JOIN customer c ON c.customer_id = o.customer_id
             JOIN product  p ON p.product_id  = o.product_id

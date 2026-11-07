@@ -1799,6 +1799,43 @@
     loadProducts();
   }
 
+  // ---------- Admin themed dialogs (replace browser prompt/confirm) ----------
+  function adminDialog({ title = 'Santi Blinds', message = '', input = false, value = '', confirm = false, confirmText = 'Continue' } = {}) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'sb-dialog-overlay';
+      overlay.innerHTML = `
+        <section class="sb-dialog" role="dialog" aria-modal="true" aria-labelledby="sb-dialog-title">
+          <div class="sb-dialog__eyebrow">SANTI BLINDS</div>
+          <h2 id="sb-dialog-title">${title}</h2>
+          <p class="sb-dialog__message"></p>
+          ${input ? `<label class="sb-dialog__label" for="sb-dialog-input">${message}</label><input id="sb-dialog-input" class="sb-dialog__input" type="text" inputmode="decimal" />` : ''}
+          <div class="sb-dialog__actions">
+            <button type="button" class="btn btn--ghost sb-dialog__cancel">Cancel</button>
+            <button type="button" class="btn btn--primary sb-dialog__accept">${confirm ? confirmText : 'Save & Continue'}</button>
+          </div>
+        </section>`;
+      const messageEl = overlay.querySelector('.sb-dialog__message');
+      if (input) messageEl.remove(); else messageEl.textContent = message;
+      const field = overlay.querySelector('.sb-dialog__input');
+      if (field) field.value = value;
+      const close = result => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(result); };
+      const onKey = event => {
+        if (event.key === 'Escape') close(input ? null : false);
+        if (event.key === 'Enter' && input) { event.preventDefault(); close(field.value); }
+      };
+      overlay.querySelector('.sb-dialog__cancel').addEventListener('click', () => close(input ? null : false));
+      overlay.querySelector('.sb-dialog__accept').addEventListener('click', () => close(input ? field.value : true));
+      overlay.addEventListener('click', event => { if (event.target === overlay) close(input ? null : false); });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+      if (field) { field.focus(); field.select(); } else overlay.querySelector('.sb-dialog__accept').focus();
+    });
+  }
+  const adminPrompt = (message, value = '', title = 'Edit quotation') => adminDialog({ title, message, input: true, value });
+  const adminConfirm = (message, title = 'Confirm action', confirmText = 'Confirm') => adminDialog({ title, message, confirm: true, confirmText });
+  const adminAlert = (message, title = 'Notice') => adminDialog({ title, message, confirm: true, confirmText: 'Okay' });
+
   // ---------- admin-quotations.html ----------
   const quotationsTable = document.getElementById('quotationsTable');
   if (quotationsTable) {
@@ -1824,7 +1861,7 @@
             <td>${Number(q.item_count)}</td><td>${money(q.total_amount)}</td>
             <td>${fmtDate(q.created_at)}</td><td>${fmtDate(q.valid_until)}</td>
             <td><select class="admin-inline-status" data-quotation-status="${q.quotation_id}" aria-label="Change quotation ${esc(q.reference)} status">
-              ${['Active', 'Ordered', 'Expired'].map(status => `<option${status === q.status ? ' selected' : ''}>${status}</option>`).join('')}
+              ${['Pending', 'Returned', 'Active', 'Ordered', 'Expired'].map(status => `<option${status === q.status ? ' selected' : ''}>${status}</option>`).join('')}
             </select></td>
             <td>${q.order_id ? `#${q.order_id} ${q.order_status ? badge(q.order_status) : ''}` : '—'}</td>
           </tr>
@@ -1834,12 +1871,16 @@
                 <table class="admin-table">
                   <thead><tr><th>Product</th><th>Material</th><th>Colour</th><th>Size (cm)</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
                   <tbody>${q.items.map(item => `
-                    <tr><td>${esc(item.product)}<br><small>${esc(item.blind_type)}</small></td>
+                    <tr data-quotation-item-id="${item.quotation_item_id}"><td>${esc(item.product)}<br><small>${esc(item.blind_type)}</small></td>
                     <td>${esc(item.material)}</td><td>${esc(item.color)}</td>
                     <td>${Number(item.width_cm)} × ${Number(item.height_cm)}</td>
                     <td>${Number(item.quantity)}</td><td>${money(item.unit_price)}</td><td>${money(item.total_amount)}</td></tr>
                   `).join('') || emptyRow(7, 'No quotation items.')}</tbody>
                 </table>
+                <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;padding:1rem 0;">
+                  <button type="button" class="btn btn--primary" data-return-quote="${q.quotation_id}" ${q.status === 'Ordered' || q.status === 'Expired' ? 'disabled' : ''}>Edit prices &amp; return to customer</button>
+                  <small>Customer cannot place an order until this quotation is returned.</small>
+                </div>
               </div>
             </td>
           </tr>
@@ -1850,7 +1891,36 @@
       }
     }
 
-    tbody.addEventListener('click', (event) => {
+    tbody.addEventListener('click', async (event) => {
+      const returnButton = event.target.closest('[data-return-quote]');
+      if (returnButton) {
+        const quoteId = returnButton.dataset.returnQuote;
+        const detail = tbody.querySelector(`[data-detail="${quoteId}"]`);
+        const rows = [...detail.querySelectorAll('tbody tr[data-quotation-item-id]')];
+        const quoteItems = [];
+        for (const row of rows) {
+          const cells = row.querySelectorAll('td');
+          const quantity = Number(cells[4].textContent.trim());
+          const original = Number(String(cells[5].textContent).replace(/[^0-9.]/g, ''));
+          const unitPrice = await adminPrompt(`Enter unit price for ${cells[0].innerText.trim()} (quantity ${quantity}):`, original.toFixed(2), 'Set unit price');
+          if (unitPrice === null) return;
+          if (!Number.isFinite(Number(unitPrice)) || Number(unitPrice) < 0) { await adminAlert('Enter a valid non-negative price.', 'Invalid price'); return; }
+          quoteItems.push({ quotation_item_id: Number(row.dataset.quotationItemId), unit_price: Number(unitPrice) });
+        }
+        const validDays = await adminPrompt('Quotation validity in days (default 14):', '14', 'Quotation validity');
+        if (validDays === null) return;
+        if (!Number.isInteger(Number(validDays)) || Number(validDays) < 1 || Number(validDays) > 90) { await adminAlert('Validity must be 1–90 days.', 'Invalid validity period'); return; }
+        if (!await adminConfirm('Return this edited quotation to the customer? The customer will be able to review the updated price.', 'Return quotation', 'Return to customer')) return;
+        returnButton.disabled = true;
+        try {
+          const result = await adminApiPost('quotations.php', { action: 'return_quote', quotation_id: Number(quoteId), items: quoteItems, valid_days: Number(validDays) });
+          if (!result || !result.success) { await adminAlert(result?.message || 'Could not return quotation.', 'Unable to return quotation'); return; }
+          await adminAlert('Quotation returned to customer.', 'Quotation returned');
+          loadQuotations();
+        } catch (error) { await adminAlert(error.message || 'Could not return quotation.', 'Unable to return quotation'); }
+        finally { returnButton.disabled = false; }
+        return;
+      }
       if (event.target.closest('[data-quotation-status]')) return;
       const row = event.target.closest('.admin-quote-row');
       if (!row) return;
@@ -2270,6 +2340,7 @@
 
   const API = 'portal';
   const $ = (id) => document.getElementById(id);
+  const setHidden = (id, hidden) => { const el = $(id); if (el) el.hidden = hidden; };
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const money = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2591,11 +2662,12 @@
 
   /* ---------- Saved quotations ---------- */
   function renderSavedQuotes(list) {
-    const active = list.filter(q => q.status === 'Active');
+    const active = list.filter(q => ['Pending', 'Returned', 'Active'].includes(q.status));
     $('savedQuotesCard').hidden = !active.length;
     $('savedQuotesBody').innerHTML = active.map(q => `<tr>
       <td>${esc(q.reference)}</td><td>${esc(q.item_count)}</td><td>${money(q.total_amount)}</td>
       <td>${esc(fmtDate(q.valid_until))}</td>
+      <td>${esc(q.status === 'Pending' ? 'Awaiting admin review' : q.status === 'Returned' ? 'Quotation returned' : q.status)}</td>
       <td><button type="button" data-quote="${esc(q.quotation_id)}">View</button></td></tr>`).join('');
   }
 
@@ -2629,13 +2701,13 @@
   function renderQuote() {
     const q = state.quote;
     $('quoteRef').textContent = `Quotation ${q.reference}`;
-    $('quoteMeta').textContent = `Prepared for ${state.customer.full_name} on ${fmtDate(q.created_at)} · valid until ${fmtDate(q.valid_until)}`
-      + (q.status === 'Ordered' ? ' · already ordered' : q.status === 'Expired' ? ' · expired' : '');
+    $('quoteMeta').textContent = `Requested by ${state.customer.full_name} on ${fmtDate(q.created_at)} · valid until ${fmtDate(q.valid_until)}`
+      + (q.status === 'Pending' ? ' · waiting for Santi Blinds to review and return your quotation' : q.status === 'Returned' ? ' · quotation returned by Santi Blinds; review the final price below' : q.status === 'Ordered' ? ' · already ordered' : q.status === 'Expired' ? ' · expired' : '');
     const unavailable = q.items.some(item => Number(item.stock_qty) < Number(item.quantity));
     if (unavailable) $('quoteMeta').textContent += ' · one or more blinds are out of stock or have insufficient stock';
     $('quoteBody').innerHTML = q.items.map(quoteRow).join('');
     $('quoteTotal').textContent = money(q.total_amount);
-    $('quoteContinueBtn').disabled = q.status !== 'Active' || unavailable;
+    $('quoteContinueBtn').disabled = q.status !== 'Returned' || unavailable;
   }
 
   // Review works from either a quotation (state.quote) or straight from the cart (no quotation).
@@ -2788,7 +2860,7 @@
 
   $('quoteContinueBtn').addEventListener('click', () => {
     clearAlert();
-    if (!state.quote || state.quote.status !== 'Active') return showAlert('This quotation can no longer be ordered. Please design again.');
+    if (!state.quote || state.quote.status !== 'Returned') return showAlert('This quotation is not ready to order yet. Please wait for Santi Blinds to return it.');
     renderReview(); go('review');
   });
 
@@ -3064,6 +3136,8 @@
   if (!app) return;
 
   const $ = (id) => document.getElementById(id);
+  // Local helper: the helper in the earlier account IIFE is not in this scope.
+  const setHidden = (id, hidden) => { const el = $(id); if (el) el.hidden = Boolean(hidden); };
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const money = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3086,9 +3160,9 @@
     Cancelled:  (o) => o.status === 'Cancelled',
   };
 
-  const state = { orders: [], filter: 'all', open: new Set(), confirmingCancel: new Set() };
+  const state = { orders: [], quotations: [], filter: 'all', open: new Set(), confirmingCancel: new Set() };
 
-  function showAlert(msg) { const el = $('ordersAlert'); el.textContent = msg; el.hidden = false; }
+  function showAlert(msg) { const el = $('ordersAlert'); if (!el) return; el.textContent = msg; el.hidden = false; }
 
   function timeline(o) {
     if (o.tracking.cancelled) {
@@ -3141,13 +3215,46 @@
     </article>`;
   }
 
+  function quotationCard(q) {
+    const statusText = q.status === 'Pending' ? 'Awaiting admin review' :
+      q.status === 'Returned' ? 'Quotation returned — ready for review' : q.status;
+    const statusClass = String(q.status || 'pending').toLowerCase();
+    return `<article class="acct-order acct-quotation">
+      <header class="acct-order__head">
+        <div><h2 class="acct-order__ref">${esc(q.reference)}</h2>
+          <p class="acct-order__meta">Requested ${esc(fmtDate(q.created_at))} · ${esc(q.item_count)} ${Number(q.item_count) === 1 ? 'item' : 'items'}</p>
+          <p class="acct-note">${esc(statusText)}</p>
+        </div>
+        <span class="acct-badge acct-badge--${esc(statusClass)}">${esc(q.status)}</span>
+        <strong class="acct-order__total">${money(q.total_amount)}</strong>
+        <a class="btn btn--ghost acct-order__toggle" href="order.html#savedQuotesCard">View quotation</a>
+      </header>
+      <p class="acct-note">${q.valid_until ? `Valid until ${esc(fmtDate(q.valid_until))}` : 'Waiting for quotation details from Santi Blinds.'}</p>
+    </article>`;
+  }
+
   function render() {
-    const list = state.orders.filter(FILTERS[state.filter]);
-    $('ordersList').innerHTML = list.map(card).join('');
-    $('ordersEmpty').hidden = list.length > 0;
-    $('ordersEmpty').textContent = state.orders.length
-      ? 'No orders match this filter.'
-      : "You haven't placed any orders yet.";
+    if (state.filter === 'quotes') {
+      const quotes = state.quotations.filter(q => ['Pending', 'Returned'].includes(q.status));
+      setHidden('ordersList', true);
+      setHidden('pendingQuotesList', false);
+      const quotesList = $('pendingQuotesList');
+      if (quotesList) quotesList.innerHTML = quotes.map(quotationCard).join('');
+      setHidden('ordersEmpty', quotes.length > 0);
+      const empty = $('ordersEmpty');
+      if (empty) empty.textContent = quotes.length ? '' : 'You have no pending quotations.';
+    } else {
+      setHidden('ordersList', false);
+      setHidden('pendingQuotesList', true);
+      const list = state.orders.filter(FILTERS[state.filter] || FILTERS.all);
+      const ordersList = $('ordersList');
+      if (ordersList) ordersList.innerHTML = list.map(card).join('');
+      setHidden('ordersEmpty', list.length > 0);
+      const empty = $('ordersEmpty');
+      if (empty) empty.textContent = state.orders.length
+        ? 'No orders match this filter.'
+        : "You haven't placed any orders yet.";
+    }
     document.querySelectorAll('[data-filter]').forEach(b => {
       const on = b.dataset.filter === state.filter;
       b.classList.toggle('is-active', on);
@@ -3155,11 +3262,13 @@
     });
   }
 
-  document.querySelector('.acct-filters').addEventListener('click', (e) => {
+  const filterBar = document.querySelector('.acct-filters');
+  if (filterBar) filterBar.addEventListener('click', (e) => {
     const b = e.target.closest('[data-filter]'); if (!b) return;
     state.filter = b.dataset.filter; render();
   });
-  $('ordersList').addEventListener('click', (e) => {
+  const ordersListElement = $('ordersList');
+  if (ordersListElement) ordersListElement.addEventListener('click', (e) => {
     const confirmButton = e.target.closest('[data-confirm-cancel]');
     if (confirmButton) {
       cancelOrder(Number(confirmButton.dataset.confirmCancel), confirmButton);
@@ -3195,10 +3304,15 @@
   async function loadOrders(initial = false) {
     try {
       const res = await fetch('portal/my_orders.php', { credentials: 'include' });
-      if (res.status === 401) { $('ordersLoading').hidden = true; $('ordersGate').hidden = false; return false; }
+      if (res.status === 401) { setHidden('ordersLoading', true); setHidden('ordersGate', false); return false; }
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Could not load your orders.');
       state.orders = data.orders;
+      try {
+        const quoteRes = await fetch('portal/quotation.php', { credentials: 'include' });
+        const quoteData = await quoteRes.json();
+        state.quotations = quoteData.success ? (quoteData.quotations || []) : [];
+      } catch (_) { state.quotations = []; }
 
       if (initial) {
         // Open the order named in the link (?order=12), else the newest one.
@@ -3207,12 +3321,12 @@
         if (pick) state.open.add(pick.order_id);
       }
 
-      $('ordersLoading').hidden = true;
-      $('ordersBody').hidden = false;
+      setHidden('ordersLoading', true);
+      setHidden('ordersBody', false);
       render();
       return true;
     } catch (err) {
-      $('ordersLoading').hidden = true;
+      setHidden('ordersLoading', true);
       showAlert((err && err.message) || 'Could not reach the server. Please try again.');
       return false;
     }

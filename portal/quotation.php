@@ -54,7 +54,7 @@ if ($method === 'POST') {
         }
 
         $pdo->prepare("INSERT INTO quotation (customer_id, total_amount, status, valid_until, created_at)
-                       VALUES (:c, :t, 'Active', :v, :n)")
+                       VALUES (:c, :t, 'Pending', :v, :n)")
             ->execute([':c' => $customerId, ':t' => $v['total'], ':v' => $validUntil, ':n' => date('Y-m-d H:i:s', $now)]);
         $quotationId = (int)$pdo->lastInsertId();
 

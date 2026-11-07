@@ -5571,3 +5571,29 @@ body textarea::placeholder {
   .login-modal { padding: 1rem; }
   .login-modal__card.order-panel { padding: 2rem 1.25rem 1.5rem; }
 }
+
+/* ---------- Santi Blinds themed admin dialogs ---------- */
+.sb-dialog-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  display: grid; place-items: center; padding: 1.25rem;
+  background: rgba(8, 9, 11, .68); backdrop-filter: blur(4px);
+  animation: sb-dialog-fade .16s ease-out;
+}
+.sb-dialog {
+  width: min(100%, 460px); padding: 1.8rem;
+  background: var(--c-surface, #202226); color: var(--c-white, #f7f5f0);
+  border: 1px solid var(--c-border, #3a3c40); border-top: 3px solid var(--c-accent, #c9a66b);
+  box-shadow: 0 24px 70px rgba(0,0,0,.35); border-radius: 3px;
+}
+.sb-dialog__eyebrow { font: 600 .68rem/1.4 var(--font-ui, sans-serif); letter-spacing: .2em; color: var(--c-accent, #c9a66b); margin-bottom: .65rem; }
+.sb-dialog h2 { margin: 0 0 .8rem; color: var(--c-white, #f7f5f0); font: 2rem/1.05 var(--font-display, Impact, sans-serif); }
+.sb-dialog__message { margin: 0 0 1.25rem; color: var(--c-body, #d1d1d1); font: .92rem/1.6 var(--font-ui, sans-serif); }
+.sb-dialog__label { display: block; margin: .3rem 0 .65rem; color: var(--c-body, #d1d1d1); font: .9rem/1.5 var(--font-ui, sans-serif); }
+.sb-dialog__input { width: 100%; min-height: 48px; padding: .75rem .9rem; background: var(--c-dark, #17181a); color: var(--c-white, #f7f5f0); border: 1px solid var(--c-border, #3a3c40); border-radius: 2px; font: 1rem var(--font-ui, sans-serif); outline: none; }
+.sb-dialog__input:focus { border-color: var(--c-accent, #c9a66b); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-accent, #c9a66b) 25%, transparent); }
+.sb-dialog__actions { display: flex; justify-content: flex-end; gap: .65rem; margin-top: 1.5rem; }
+.sb-dialog__actions .btn { min-height: 42px; padding: .65rem 1.15rem; letter-spacing: .08em; font-size: .75rem; }
+.sb-dialog__cancel { background: transparent; color: var(--c-white, #f7f5f0); border: 1px solid var(--c-border, #3a3c40); }
+.sb-dialog__cancel:hover { border-color: var(--c-accent, #c9a66b); color: var(--c-accent, #c9a66b); }
+@keyframes sb-dialog-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 480px) { .sb-dialog { padding: 1.25rem; } .sb-dialog__actions { flex-wrap: wrap; } }

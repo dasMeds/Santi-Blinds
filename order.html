@@ -172,7 +172,7 @@
           <div class="order-preview__total"><span>Estimated total</span><strong id="cartTotal">₱0.00</strong></div>
           <div class="order-actions">
             <button type="button" class="btn btn--primary" id="orderNowBtn">Place Order</button>
-            <button type="button" class="btn btn--ghost" id="getQuoteBtn">Get a Quotation First (optional)</button>
+            <button type="button" class="btn btn--ghost" id="getQuoteBtn">Request a Quotation</button>
           </div>
         </div>
 
@@ -180,7 +180,7 @@
           <h3>Your saved quotations</h3>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Quotation</th><th>Items</th><th>Total</th><th>Valid until</th><th></th></tr></thead>
+              <thead><tr><th>Quotation</th><th>Items</th><th>Total</th><th>Valid until</th><th>Status</th><th></th></tr></thead>
               <tbody id="savedQuotesBody"></tbody>
             </table>
           </div>
@@ -190,7 +190,7 @@
       <!-- QUOTATION (optional) -->
       <div class="order-panel order-panel--narrow" id="panelQuote" hidden>
         <h2 class="order-panel__title" tabindex="-1">Your quotation</h2>
-        <p class="order-panel__lead">Prices below are locked in until the date shown. Place your order from this quotation, or go back and change your design.</p>
+        <p class="order-panel__lead">Your request is sent to Santi Blinds for review. The admin will finalize the pricing and return the quotation here. You can place your order after it is returned.</p>
         <div class="order-quote" id="quoteDoc">
           <h4 id="quoteRef"></h4>
           <p class="order-hint" id="quoteMeta"></p>
