@@ -44,6 +44,21 @@ The root `.htaccess` denies direct browser access to `db_config.php`, SQL files,
 
 Before importing, make sure the database does not already contain an older version of the same app unless you intend to upgrade it.
 
+### Optional analytics warehouse
+
+After the operational schema is installed (and any desired operational sample data is loaded), import `database/warehouse.sql`. It creates a separate `santiblinds_dw` database, loads historical orders, quotations, inquiries, and product stock, and creates a daily scheduled load event. The script does not change the `santiblinds` operational tables.
+
+The warehouse is a reporting copy; it intentionally omits customer names, email, phone, address, password hashes, inquiry messages, and admin audit details. Its ETL is a full reconciliation because the operational tables do not have dependable change timestamps. Re-running `CALL santiblinds_dw.sp_load_warehouse();` is safe and refreshes the facts and the current day's stock snapshot.
+
+The initial load runs during import. The scheduled event runs only when MySQL's global `event_scheduler` is enabled. If it is disabled, enable it in the MySQL server configuration or run the procedure manually on the desired schedule. Confirm load status with:
+
+```sql
+SELECT * FROM santiblinds_dw.etl_run ORDER BY run_id DESC;
+SELECT * FROM santiblinds_dw.vw_warehouse_reconciliation;
+```
+
+Keep the warehouse on the same MySQL/MariaDB server as `santiblinds`, and run the import using an account allowed to create databases, views, procedures, and events. For production, use separate least-privilege ETL and analyst accounts rather than broad application credentials.
+
 ### Upgrade notes
 
 - `database/migrate_ready_status.sql` converts legacy order statuses into the newer completed state.
