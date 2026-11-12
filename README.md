@@ -71,6 +71,7 @@ santiblinds/
 │   ├── sample_data.sql
 │   ├── migrate_encryption.sql
 │   ├── migrate_ready_status.sql
+│   ├── warehouse.sql
 │   └── database_authorization.sql
 ├── tools/
 │   ├── generate_key.php
@@ -112,9 +113,10 @@ santiblinds/
 1. Place the project in `C:\xampp\htdocs\santiblinds`.
 2. Start Apache and MySQL in XAMPP.
 3. Import `database/schema.sql` in phpMyAdmin, optionally followed by `database/sample_data.sql`.
-4. Configure `db_config.php` and, if using encryption, generate and protect the encryption key.
-5. Create the owner/admin account, then open the public site and admin login.
-6. For full setup steps, see [SETUP.md](C:/xampp/htdocs/santiblinds/SETUP.md).
+4. Optionally import `database/warehouse.sql` after the operational schema to create and backfill the separate reporting warehouse.
+5. Configure `db_config.php` and, if using encryption, generate and protect the encryption key.
+6. Create the owner/admin account, then open the public site and admin login.
+7. For full setup steps, see [SETUP.md](C:/xampp/htdocs/santiblinds/SETUP.md).
 
 ## Common URLs
 

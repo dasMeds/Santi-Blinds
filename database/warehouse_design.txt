@@ -5,9 +5,11 @@ DATABASE REQUIREMENTS, ERD, AND DATA WAREHOUSE DESIGN
 1. PURPOSE AND SCOPE
 --------------------
 This document describes the database behavior found in the repository and
-a proposed analytical warehouse for management reporting. The warehouse is
-an addition to the transactional application database; it is not a replacement
-for it. Do not run the proposed DDL against the live application database.
+the analytical warehouse for management reporting. The warehouse is an
+addition to the transactional application database; it is not a replacement
+for it. The executable implementation is database/warehouse.sql. It creates
+a separate santiblinds_dw schema and does not alter the live application
+tables.
 
 The application currently connects through PDO to MySQL/MariaDB database
 "santiblinds", using InnoDB and utf8mb4. The canonical fresh-install source
@@ -139,14 +141,15 @@ All fact-table date keys refer to dim_date. Facts refer to the relevant
 customer, product, material, color, status, and payment dimensions. The
 diagram is conceptual; the DDL below is the proposed physical structure.
 
-5. PROPOSED MYSQL WAREHOUSE SCHEMA
+5. MYSQL WAREHOUSE SCHEMA DESIGN
 ----------------------------------
 
-Create these tables in santiblinds_dw (or a dedicated warehouse schema).
+The following conceptual DDL describes the warehouse tables. For a runnable,
+repeatable implementation including views, ETL, summary refresh, and event
+scheduling, use database/warehouse.sql.
 Use date_key in YYYYMMDD format; reserve a documented unknown-date member
 for source values that cannot be parsed.
-The following is design DDL, not a migration for the existing application.
-In production, add deployment-specific charset, engine, grants, and indexes.
+The warehouse is separate from the operational database.
 
 CREATE TABLE dim_date (
   date_key       INT NOT NULL PRIMARY KEY,
@@ -435,11 +438,33 @@ Other implementation constraints:
      inventory quantity semantics, and revenue accounting definition.
   2. Reconcile legacy application files with the canonical schema.
   3. Provision a separate warehouse database and restricted ETL/analyst users.
-  4. Create dimensions, unknown members, and date rows; perform a
-     deduplicated historical backfill.
-  5. Capture daily inventory snapshots and schedule idempotent fact loads.
-  6. Reconcile row counts and financial totals with the admin reports.
-  7. Add CDC or source change timestamps before relying on incremental
-     updates for mutable records.
+  4. Import database/warehouse.sql after database/schema.sql.
+  5. Reconcile row counts and financial totals with the admin reports.
+  6. Add CDC or source change timestamps before replacing the full
+     reconciliation with a true incremental change-capture pipeline.
+
+9. IMPLEMENTED SQL PIPELINE NOTES
+---------------------------------
+  - database/warehouse.sql creates the star-schema dimensions and order,
+    order-line, quotation-line, inquiry, and daily inventory snapshot facts.
+  - stg_* views map the canonical santiblinds tables into consistent,
+    PII-minimized source columns while retaining raw source statuses.
+  - sp_load_warehouse() upserts dimensions and facts, removes facts for
+    deleted source rows, rebuilds agg_daily_sales, and logs each run in
+    etl_run. It loads the full source each time to propagate source edits.
+  - ev_santiblinds_dw_daily_load runs the procedure daily if the server's
+    global event_scheduler is enabled. The script also calls the procedure
+    once for its initial historical load.
+  - vw_warehouse_reconciliation compares source and warehouse counts,
+    line totals, completed revenue, and current-day inventory snapshot counts.
+    Investigate differences before relying on management reports.
+  - Customer and product descriptors are Type 1/current-state dimensions:
+    the source schema has no descriptor history from which Type 2 versions
+    can be reconstructed. Transaction prices/amounts remain historical.
+  - Date keys use the source database's stored calendar date; the ETL does
+    not assume or perform a UTC conversion because the source DATETIME fields
+    contain no timezone metadata. Verify the reporting timezone before use.
+  - Quote conversion is available per quote line; calculate quote-level
+    conversion using distinct source_quotation_id values.
 
 END OF DESIGN
