@@ -54,7 +54,7 @@ $preferred = clean($_POST['preferred'] ?? '');
 $rooms     = clean($_POST['rooms']     ?? '');
 $budget    = clean($_POST['budget']    ?? '');
 $message   = clean($_POST['message']   ?? '');
-$consent   = isset($_POST['consent'])  ? 1 : 0;
+$consent   = !empty($_POST['consent']) ? 1 : 0;
 
 // ── 2. Validate required fields ─────────────────────────────
 
@@ -80,30 +80,57 @@ if (!empty($errors)) {
 
 try {
     $pdo = getDB();
+    $pdo->beginTransaction();
 
-    $sql = "
-        INSERT INTO enquiries
-            (fname, lname, email, phone, city, interest, preferred, rooms, budget, message, consent)
-        VALUES
-            (:fname, :lname, :email, :phone, :city, :interest, :preferred, :rooms, :budget, :message, :consent)
-    ";
+    // Re-use the customer with this email (keeps their history together) or create one.
+    // A registered account's details are never overwritten by a guest form.
+    $fullName = trim($fname . ' ' . $lname);
+    $emailKey = strtolower($email);
+    $find = $pdo->prepare(
+        "SELECT customer_id FROM customer WHERE email = :e
+         ORDER BY (password_hash IS NOT NULL) DESC, customer_id LIMIT 1"
+    );
+    $find->execute([':e' => $emailKey]);
+    $customerId = $find->fetchColumn();
+    if ($customerId) {
+        $pdo->prepare(
+            "UPDATE customer SET full_name = :n,
+                    phone = COALESCE(NULLIF(:p, ''), phone),
+                    address = COALESCE(NULLIF(:a, ''), address)
+             WHERE customer_id = :id AND password_hash IS NULL"
+        )->execute([':n' => $fullName, ':p' => $phone, ':a' => $city, ':id' => $customerId]);
+    } else {
+        $pdo->prepare("INSERT INTO customer (full_name, email, phone, address) VALUES (:n, :e, :p, :a)")
+            ->execute([':n' => $fullName, ':e' => $emailKey, ':p' => $phone, ':a' => $city ?: null]);
+        $customerId = $pdo->lastInsertId();
+    }
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':fname'     => $fname,
-        ':lname'     => $lname,
-        ':email'     => $email,
-        ':phone'     => $phone     ?: null,
-        ':city'      => $city      ?: null,
-        ':interest'  => $interest  ?: null,
-        ':preferred' => $preferred ?: null,
-        ':rooms'     => $rooms     ?: null,
-        ':budget'    => $budget    ?: null,
-        ':message'   => $message   ?: null,
-        ':consent'   => $consent,
+    // The "area of interest" is free text on this form; link a product when its name matches.
+    $productId = null;
+    if ($interest !== '') {
+        $prod = $pdo->prepare("SELECT product_id FROM product WHERE name LIKE :i OR blind_type LIKE :i2 LIMIT 1");
+        $like = '%' . $interest . '%';
+        $prod->execute([':i' => $like, ':i2' => $like]);
+        $productId = $prod->fetchColumn() ?: null;
+    }
+
+    $pdo->prepare(
+        "INSERT INTO inquiry (customer_id, product_id, message, interest, preferred_contact, rooms, budget, consent, status)
+         VALUES (:c, :p, :m, :i, :pc, :r, :b, :k, 'New')"
+    )->execute([
+        ':c'  => $customerId,
+        ':p'  => $productId,
+        ':m'  => $message   ?: null,
+        ':i'  => $interest  ?: null,
+        ':pc' => $preferred ?: null,
+        ':r'  => $rooms     ?: null,
+        ':b'  => $budget    ?: null,
+        ':k'  => $consent,
     ]);
+    $pdo->commit();
 
 } catch (\Throwable $e) {   // \Throwable: PDOException is NOT PHPMailer's Exception class
+    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
     error_log('Enquiry DB insert failed: ' . $e->getMessage());
     echo json_encode([

@@ -36,8 +36,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sum += $lineTotal;
             }
             $validDays = max(1, min(90, (int)($body['valid_days'] ?? 14)));
-            $pdo->prepare("UPDATE quotation SET total_amount = :total, status = 'Returned', valid_until = DATE_ADD(NOW(), INTERVAL $validDays DAY) WHERE quotation_id = :id")
-                ->execute([':total' => round($sum, 2), ':id' => $quotationId]);
+            $pdo->prepare("UPDATE quotation SET total_amount = :total, status = 'Returned', valid_until = DATE_ADD(NOW(), INTERVAL $validDays DAY),
+                           reviewed_by = :by, reviewed_at = NOW() WHERE quotation_id = :id")
+                ->execute([':total' => round($sum, 2), ':by' => $_SESSION['owner_id'] ?? null, ':id' => $quotationId]);
+            recordAudit('Quotation returned', sprintf('Quotation #%d reviewed and returned, total %.2f, valid %d days.', $quotationId, $sum, $validDays));
             $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'Quotation returned to customer.']);
             exit;

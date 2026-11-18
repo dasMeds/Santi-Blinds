@@ -33,10 +33,13 @@ try {
          WHERE order_id = :order_id AND customer_id = :customer_id"
     );
     $update->execute([':order_id' => $orderId, ':customer_id' => $customerId]);
+    $pdo->prepare("INSERT INTO order_status_history (order_id, old_status, new_status, changed_by) VALUES (:o, :old, 'Cancelled', :by)")
+        ->execute([':o' => $orderId, ':old' => $statuses[0], ':by' => 'Customer #' . $customerId]);
     $pdo->commit();
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     throw $e;
 }
 
+logActivity($pdo, $customerId, 'Order cancelled', sprintf('SB-%05d cancelled by customer.', $orderId));
 respond(['success' => true]);

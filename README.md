@@ -8,7 +8,6 @@ Santi Blinds is a custom PHP + MySQL storefront and management system for a wind
 - Customer portal for registration, login, customization, quotation, and order placement
 - Admin dashboard with KPI cards, sales and order reporting, inventory views, and customer management
 - Relational database schema for products, quotation items, orders, payments, inquiries, and owner/admin access
-- AES-256-GCM field encryption for sensitive personal and customer data
 
 ## Tech stack
 
@@ -16,7 +15,6 @@ Santi Blinds is a custom PHP + MySQL storefront and management system for a wind
 - MySQL / MariaDB
 - Apache via XAMPP or similar local server
 - HTML, CSS, JavaScript
-- Optional encryption via custom PHP crypto library
 
 ## Current project structure
 
@@ -25,8 +23,7 @@ santiblinds/
 ├── admin/
 │   ├── api/
 │   │   ├── config.php
-│   │   ├── login.php
-│   │   ├── dashboard.php
+│   │   │   ├── dashboard.php
 │   │   ├── customers.php
 │   │   ├── orders.php
 │   │   ├── quotations.php
@@ -58,34 +55,26 @@ santiblinds/
 │   ├── customer_login.php
 │   ├── customer_register.php
 │   ├── customer_session.php
-│   ├── customization.php
 │   ├── inquiry.php
 │   ├── login.php
-│   ├── logout.php
-│   ├── me.php
 │   ├── order.php
 │   ├── quotation.php
-│   └── register.php
 ├── database/
 │   ├── schema.sql
 │   ├── sample_data.sql
-│   ├── migrate_encryption.sql
 │   ├── migrate_ready_status.sql
+│   ├── migrate_iso_fixes.sql
 │   ├── warehouse.sql
 │   └── database_authorization.sql
-├── tools/
-│   ├── generate_key.php
-│   ├── encrypt_existing_data.php
-│   ├── encryption_demo.php
-│   └── encryption_demo.py
+├── legacy/            (unused old encryption build, blocked from the web)
+├── docs/
+│   └── ISO9001_ALIGNMENT.md
 ├── css/
 ├── javascript/
 ├── images/
 ├── video/
 ├── .htaccess
 ├── db_config.php
-├── crypto_lib.php
-├── ENCRYPTION.md
 ├── SETUP.md
 ├── README.md
 ├── index.html
@@ -96,7 +85,6 @@ santiblinds/
 ├── order.html
 ├── contact.html
 ├── enquiries.php
-├── create_admin.php
 ├── create_owner.php
 └── ...
 ```
@@ -105,16 +93,16 @@ santiblinds/
 
 - The project is designed for local development and demo hosting on XAMPP.
 - `db_config.php` loads the database and mail settings and can also read environment variables for credentials.
-- Sensitive customer data is encrypted using the PHP crypto layer described in `ENCRYPTION.md`.
+- Customer data is stored as plain text in the database. The earlier field-encryption design is parked in `legacy/` and is not active. Protect the database with a least-privilege account, HTTPS, and disk or backup encryption.
 - The repository includes legacy and newer admin helpers; the current database schema uses the `owner_manager` table.
 
 ## Quick start
 
 1. Place the project in `C:\xampp\htdocs\santiblinds`.
 2. Start Apache and MySQL in XAMPP.
-3. Import `database/schema.sql` in phpMyAdmin, optionally followed by `database/sample_data.sql`.
+3. Import `database/schema.sql` in phpMyAdmin (existing installs: import `database/migrate_iso_fixes.sql` instead), optionally followed by `database/sample_data.sql`.
 4. Optionally import `database/warehouse.sql` after the operational schema to create and backfill the separate reporting warehouse.
-5. Configure `db_config.php` and, if using encryption, generate and protect the encryption key.
+5. Configure `db_config.php`.
 6. Create the owner/admin account, then open the public site and admin login.
 7. For full setup steps, see [SETUP.md](C:/xampp/htdocs/santiblinds/SETUP.md).
 

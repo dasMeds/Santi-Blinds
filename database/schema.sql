@@ -61,6 +61,35 @@ CREATE TABLE IF NOT EXISTS customer (
 ) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------
+-- QUALITY RECORDS (ISO 9001:2015 clause 7.5 documented information)
+-- customer_activity : customer sign-ins and actions (admin "Customer Activity")
+-- order_status_history : every order status change (8.5.2 traceability)
+-- All three record tables are append-only; see triggers below.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customer_activity (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NULL,
+  action      VARCHAR(60) NOT NULL,
+  details     TEXT NULL,
+  email       VARCHAR(160) NULL,
+  ip_address  VARCHAR(45) NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_activity_created (created_at),
+  INDEX idx_activity_throttle (email, action, created_at),
+  FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS order_status_history (
+  history_id  INT AUTO_INCREMENT PRIMARY KEY,
+  order_id    INT NOT NULL,
+  old_status  VARCHAR(30) NULL,
+  new_status  VARCHAR(30) NOT NULL,
+  changed_by  VARCHAR(160) NOT NULL,   -- admin name, or 'Customer #id'
+  changed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_osh_order (order_id, changed_at)
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
 -- PRODUCT CATALOG
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS category (
@@ -103,8 +132,11 @@ CREATE TABLE IF NOT EXISTS quotation (
   status       VARCHAR(30) NOT NULL DEFAULT 'Active',
   valid_until  DATETIME NOT NULL,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_by  INT NULL,            -- owner who reviewed and returned the quotation (ISO 9001 8.2.3)
+  reviewed_at  DATETIME NULL,
   INDEX idx_quotation_customer (customer_id),
-  FOREIGN KEY (customer_id) REFERENCES customer(customer_id)
+  FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
+  FOREIGN KEY (reviewed_by) REFERENCES owner_manager(owner_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS quotation_item (
@@ -145,7 +177,9 @@ CREATE TABLE IF NOT EXISTS orders (
   total_amount DECIMAL(12,2) NOT NULL,
   status       VARCHAR(30) NOT NULL DEFAULT 'Pending',
   order_date   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_archived  TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_orders_order (order_id),
+  INDEX idx_orders_archived (is_archived),
   INDEX idx_orders_customer_date (customer_id, order_date),
   INDEX idx_orders_status (status),
   INDEX idx_orders_quotation (quotation_id),
@@ -170,8 +204,13 @@ CREATE TABLE IF NOT EXISTS sale (
 CREATE TABLE IF NOT EXISTS inquiry (
   enquiry_id  INT AUTO_INCREMENT PRIMARY KEY,
   customer_id INT NOT NULL,
-  product_id  INT NOT NULL,
+  product_id  INT NULL,             -- NULL when the contact form names no specific product
   message     TEXT NULL,
+  interest          VARCHAR(120) NULL,
+  preferred_contact VARCHAR(60)  NULL,
+  rooms             VARCHAR(60)  NULL,
+  budget            VARCHAR(60)  NULL,
+  consent           TINYINT(1) NOT NULL DEFAULT 1,
   status      VARCHAR(30) NOT NULL DEFAULT 'New',
   created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_inquiry_status (status),
@@ -288,6 +327,46 @@ BEGIN
   END IF;
 END$$
 
+DELIMITER ;
+
+-- ------------------------------------------------------------
+-- RECORD PROTECTION (ISO 9001 7.5.3): audit, activity and status
+-- history rows can be added but never edited or deleted.
+-- (admin_audit_log.owner_id may still be nulled by the FK rule;
+--  referential actions do not fire triggers.)
+-- ------------------------------------------------------------
+DROP TRIGGER IF EXISTS admin_audit_log_no_update;
+DROP TRIGGER IF EXISTS admin_audit_log_no_delete;
+DROP TRIGGER IF EXISTS customer_activity_no_update;
+DROP TRIGGER IF EXISTS customer_activity_no_delete;
+DROP TRIGGER IF EXISTS order_status_history_no_update;
+DROP TRIGGER IF EXISTS order_status_history_no_delete;
+
+DELIMITER $$
+CREATE TRIGGER admin_audit_log_no_update BEFORE UPDATE ON admin_audit_log
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Audit records are append-only';
+END$$
+CREATE TRIGGER admin_audit_log_no_delete BEFORE DELETE ON admin_audit_log
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Audit records are append-only';
+END$$
+CREATE TRIGGER customer_activity_no_update BEFORE UPDATE ON customer_activity
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Activity records are append-only';
+END$$
+CREATE TRIGGER customer_activity_no_delete BEFORE DELETE ON customer_activity
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Activity records are append-only';
+END$$
+CREATE TRIGGER order_status_history_no_update BEFORE UPDATE ON order_status_history
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Status history is append-only';
+END$$
+CREATE TRIGGER order_status_history_no_delete BEFORE DELETE ON order_status_history
+FOR EACH ROW BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Status history is append-only';
+END$$
 DELIMITER ;
 
 -- ------------------------------------------------------------

@@ -29,8 +29,8 @@ This repository contains both the public storefront and the internal admin tooli
 - `portal/` for customer registration, login, customizations, quotations, and order endpoints
 - `admin/` for the admin UI and API endpoints
 - `database/` for schema and migration SQL scripts
-- `tools/` for encryption key generation and data migration utilities
-- `db_config.php` for database, mail, and encryption settings
+- `legacy/` for the unused earlier field-encryption build (blocked from the web)
+- `db_config.php` for database and mail settings
 
 The root `.htaccess` denies direct browser access to `db_config.php`, SQL files, and some documentation files.
 
@@ -62,7 +62,7 @@ Keep the warehouse on the same MySQL/MariaDB server as `santiblinds`, and run th
 ### Upgrade notes
 
 - `database/migrate_ready_status.sql` converts legacy order statuses into the newer completed state.
-- `database/migrate_encryption.sql` adds the encryption-related columns and indexes needed for the customer data protection layer.
+- `database/migrate_iso_fixes.sql` upgrades an existing database: adds `orders.is_archived`, `customer_activity`, `order_status_history`, quotation review fields, the extra `inquiry` columns, and append-only record triggers. Safe to re-run. Back up first.
 
 ## 4. Configure the application
 
@@ -86,43 +86,9 @@ define('MAIL_APP_PASSWORD', 'xxxx xxxx xxxx xxxx');
 
 The current file also supports environment-based overrides when the host environment provides values. This is safer for local and production setups.
 
-## 5. Enable encryption (required for current sensitive-data flow)
+## 5. Customer data protection
 
-The project includes AES-256-GCM field encryption for customer names, contact details, and order notes. This is described in `ENCRYPTION.md`.
-
-### Generate the key
-
-Run this from the project root:
-
-```bash
-C:\xampp\php\php.exe tools\generate_key.php
-```
-
-This writes the key outside the web root, in the path configured by `ENC_KEY_FILE` in `db_config.php`.
-
-Important:
-
-- Back up the key file in a separate location from the database.
-- If the key is lost, encrypted values cannot be recovered.
-- For a fresh install, `database/schema.sql` already includes the encryption-ready table structure.
-
-### Existing database migration
-
-If the database existed before the encryption changes, import the migration SQL first, then encrypt the old rows:
-
-```bash
-C:\xampp\php\php.exe tools\encrypt_existing_data.php
-```
-
-For a fresh installation, this step is usually only needed when using a database seeded with older plaintext records.
-
-Once the migration is completed, set `ENC_ALLOW_LEGACY_PLAINTEXT` to `false` in `db_config.php`.
-
-To validate the setup, run:
-
-```bash
-C:\xampp\php\php.exe tools\encryption_demo.php --db
-```
+The current build stores customer data as plain text. The earlier field-encryption design is parked in `legacy/` and is not active. Until it is rebuilt against the current schema, protect the data with a least-privilege database account, HTTPS, restricted file permissions, and encrypted backups.
 
 ## 6. Create the admin owner account
 
@@ -219,23 +185,18 @@ For Gmail, generate an app password from the Google account security settings. T
 | `SQLSTATE[HY000] [2002]` | MySQL connection failed | Start MySQL and check DB credentials |
 | Pages redirect to login | Session/cookie issue or wrong URL | Use `http://localhost/...` and ensure cookies are enabled |
 | Missing images or video | Assets not copied to the project root | Check `images/` and `video/` folders |
-| `Encryption key not found` | Key file absent or wrong location | Run `tools/generate_key.php` and verify `ENC_KEY_FILE` |
-| Old customer values not decrypting | Legacy plaintext not migrated | Run `encrypt_existing_data.php` and confirm `ENC_ALLOW_LEGACY_PLAINTEXT` |
 | Admin login fails | Wrong password or old schema mismatch | Recreate the `owner_manager` record or check the hashed password |
 
 ## 11. Security notes
 
 - Keep `db_config.php` outside the public web root in production or rely on environment variables.
 - Do not commit live credentials or real app passwords to version control.
-- The encryption key is a critical secret and should be stored separately from the database.
 - The project intentionally avoids storing card numbers; payment is tracked by method rather than processing online.
 
 ## 12. Relevant files
 
 - `db_config.php` — database and mail settings
-- `crypto_lib.php` — encryption helpers
-- `ENCRYPTION.md` — security and encryption documentation
+- `docs/ISO9001_ALIGNMENT.md` — quality-system alignment and open items
 - `database/schema.sql` — current schema
 - `portal/catalog_lib.php` — pricing and quotation logic
 - `admin/api/dashboard.php` — dashboard metrics and summaries
-- `tools/generate_key.php` — encryption key generation

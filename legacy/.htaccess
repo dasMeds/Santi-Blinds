@@ -1,0 +1,4 @@
+# Old field-encryption build (unused).
+# These files target tables that no longer exist (customers, customer_accounts,
+# enquiries, customer_activity v1). Kept for reference only; never served.
+Require all denied

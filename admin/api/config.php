@@ -77,6 +77,14 @@ function recordAudit(string $action, string $details = ''): void {
     ]);
 }
 
+/** ISO 9001 8.5.2 traceability: one row per order status change. */
+function recordOrderStatus(int $orderId, ?string $old, string $new, ?string $by = null): void {
+    getDB()->prepare(
+        "INSERT INTO order_status_history (order_id, old_status, new_status, changed_by)
+         VALUES (:o, :old, :new, :by)"
+    )->execute([':o' => $orderId, ':old' => $old, ':new' => $new, ':by' => $by ?? ($_SESSION['owner_name'] ?? 'Admin')]);
+}
+
 function requestBody(): array {
     $json = json_decode(file_get_contents('php://input'), true);
     return is_array($json) ? $json : $_POST;
@@ -99,23 +107,36 @@ function updateQuotationStatus(PDO $pdo, int $quotationId, string $status): ?str
             return 'Quotation not found.';
         }
 
-        if ($status === 'Active') {
-            $pdo->prepare(
-                "UPDATE quotation
-                 SET status = 'Active',
-                     valid_until = CASE WHEN valid_until < NOW()
-                                        THEN DATE_ADD(NOW(), INTERVAL 7 DAY)
-                                        ELSE valid_until END
-                 WHERE quotation_id = :id"
-            )->execute([':id' => $quotationId]);
-        } elseif ($status === 'Expired') {
+        // A quotation that already produced an order is a closed record: it cannot be reopened.
+        if ($status !== 'Ordered') {
+            $used = $pdo->prepare('SELECT 1 FROM orders WHERE quotation_id = :id LIMIT 1');
+            $used->execute([':id' => $quotationId]);
+            if ($used->fetchColumn()) {
+                $pdo->rollBack();
+                return 'An order already exists for this quotation, so its status cannot be changed.';
+            }
+        }
+
+        if ($status === 'Expired') {
+            // "Expired" is derived from valid_until; the stored status stays Active.
             $pdo->prepare(
                 "UPDATE quotation SET status = 'Active', valid_until = DATE_SUB(NOW(), INTERVAL 1 SECOND)
                  WHERE quotation_id = :id"
             )->execute([':id' => $quotationId]);
+        } elseif (in_array($status, ['Active', 'Pending', 'Returned', 'Ordered'], true)) {
+            // Store exactly the status that was chosen. A lapsed quotation that is reopened
+            // (anything except Ordered) gets a fresh 7-day validity window.
+            $pdo->prepare(
+                "UPDATE quotation
+                 SET status = :s,
+                     valid_until = CASE WHEN :s2 <> 'Ordered' AND valid_until < NOW()
+                                        THEN DATE_ADD(NOW(), INTERVAL 7 DAY)
+                                        ELSE valid_until END
+                 WHERE quotation_id = :id"
+            )->execute([':s' => $status, ':s2' => $status, ':id' => $quotationId]);
         } else {
-            $pdo->prepare("UPDATE quotation SET status = 'Ordered' WHERE quotation_id = :id")
-                ->execute([':id' => $quotationId]);
+            $pdo->rollBack();
+            return 'Invalid quotation status.';
         }
 
         recordAudit(
