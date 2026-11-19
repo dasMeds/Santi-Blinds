@@ -2185,6 +2185,30 @@
     loadAudit();
   }
 
+  // ---------- admin-activity.html ----------
+  const activityTable = document.getElementById('activityTable');
+  if (activityTable) {
+    const tbody = activityTable.querySelector('tbody');
+    const activityFilter = document.getElementById('activityFilter');
+
+    async function loadActivity() {
+      try {
+        const data = await adminApiGet('activity.php', { action: activityFilter.value });
+        if (!data) return;
+        tbody.innerHTML = data.success && data.activity.length ? data.activity.map(a => `
+          <tr><td>${fmtDate(a.created_at)}<br><small>${esc(a.created_at)}</small></td>
+          <td>${esc(a.full_name || a.email || 'Guest')}</td><td>${esc(a.action)}</td>
+          <td>${esc(a.details || '')}</td><td>${esc(a.ip_address || '')}</td></tr>
+        `).join('') : emptyRow(5, data.message || 'No customer activity has been recorded yet.');
+      } catch (error) {
+        tbody.innerHTML = emptyRow(5, error.message || 'Could not load customer activity.');
+      }
+    }
+
+    activityFilter.addEventListener('change', loadActivity);
+    loadActivity();
+  }
+
   // ---------- admin-sales.html (sale table) ----------
   const salesStats = document.getElementById('salesStats');
   if (salesStats) {

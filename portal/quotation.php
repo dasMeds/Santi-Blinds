@@ -75,6 +75,7 @@ if ($method === 'POST') {
     }
 
     recordHit('quote_times');
+    logActivity($pdo, $customerId, 'Quotation requested', sprintf('%s requested, total %.2f.', quotationRef($quotationId), $v['total']));
     respond(['success' => true, 'quotation' => loadQuotation($pdo, $quotationId, $customerId)]);
 }
 

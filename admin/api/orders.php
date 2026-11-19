@@ -182,6 +182,10 @@ if ($method === 'POST') {
         $row = $t->fetch();
         if ((int)$row['n'] === 0) { $pdo->rollBack(); fail(404, 'Order not found.'); }
 
+        $prev = $pdo->prepare("SELECT MAX(status) FROM orders WHERE order_id = :id");
+        $prev->execute([':id' => $id]);
+        $oldStatus = $prev->fetchColumn() ?: null;
+
         // Inventory triggers reconcile stock for each order line on status changes.
         $pdo->prepare("UPDATE orders SET status = :s WHERE order_id = :id")
             ->execute([':s' => $status, ':id' => $id]);
@@ -195,6 +199,7 @@ if ($method === 'POST') {
         } else {
             $pdo->prepare("DELETE FROM sale WHERE order_id = :id")->execute([':id' => $id]);
         }
+        if ($oldStatus !== $status) recordOrderStatus($id, $oldStatus, $status);
         recordAudit('Order updated', sprintf('Order #%d status set to %s.', $id, $status));
         $pdo->commit();
     } catch (PDOException $e) {

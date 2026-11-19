@@ -106,6 +106,9 @@ try {
     $itemsStmt->execute([':id' => $orderId, ':customer_id' => $customerId]);
     $receiptItems = $itemsStmt->fetchAll();
 
+    $actor = 'Customer #' . $customerId;
+    $pdo->prepare("INSERT INTO order_status_history (order_id, old_status, new_status, changed_by) VALUES (:o, NULL, 'Pending', :by)")
+        ->execute([':o' => $orderId, ':by' => $actor]);
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
@@ -119,6 +122,7 @@ try {
 }
 
 recordHit('order_times');
+logActivity($pdo, $customerId, 'Order placed', sprintf('%s placed, total %.2f%s.', sprintf('SB-%05d', $orderId), $total, $quoteRef ? ", from {$quoteRef}" : ''));
 respond([
     'success' => true,
     'order'   => ['id' => $orderId, 'reference' => sprintf('SB-%05d', $orderId), 'amount' => $total,

@@ -41,10 +41,12 @@ try {
         $pdo->prepare("INSERT INTO customer (full_name, email, phone, address, password_hash) VALUES (:n, :e, :p, :a, :h)")
             ->execute([':n' => $cust['full_name'], ':e' => $cust['email'], ':p' => $cust['phone'], ':a' => $cust['address'], ':h' => $hash]);
     }
+    $newId = $row ? (int)$row['customer_id'] : (int)$pdo->lastInsertId();
     $pdo->commit();
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     throw $e;
 }
+logActivity($pdo, $newId, 'Register', 'New account for ' . $cust['full_name'] . '.', $cust['email']);
 
 respond(['success' => true, 'message' => 'Account created. Please log in to continue.']);

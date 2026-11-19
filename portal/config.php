@@ -88,6 +88,21 @@ function recentCount(string $key, int $window = 600): int {
     $_SESSION[$key] = array_values(array_filter($_SESSION[$key] ?? [], fn($t) => $t > $now - $window));
     return count($_SESSION[$key]);
 }
+/** ISO 9001 7.5: record a customer action. Never lets a logging failure break the request. */
+function logActivity(PDO $pdo, ?int $customerId, string $action, string $details = '', ?string $email = null): void {
+    try {
+        $pdo->prepare(
+            "INSERT INTO customer_activity (customer_id, action, details, email, ip_address)
+             VALUES (:c, :a, :d, :e, :ip)"
+        )->execute([
+            ':c' => $customerId, ':a' => $action, ':d' => $details !== '' ? $details : null,
+            ':e' => $email, ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+        ]);
+    } catch (Throwable $e) {
+        error_log('Activity log failed: ' . $e->getMessage());
+    }
+}
+
 function recordHit(string $key): void {
     $_SESSION[$key][] = time();
 }
