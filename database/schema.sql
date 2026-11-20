@@ -404,4 +404,4 @@ FROM (
 ) AS seed
 WHERE NOT EXISTS (
   SELECT 1 FROM color c WHERE c.name = seed.name
-);  
+);
