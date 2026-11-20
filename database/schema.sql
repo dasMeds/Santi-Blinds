@@ -1,17 +1,8 @@
 -- ============================================================
--- Santi Blinds — unified database schema + starter data
--- Fresh installation: import this file in phpMyAdmin.
--- Database: santiblinds
---
--- Embedded owner account:
--- Email: owner@santiblinds.com
--- Password: santiowner
--- The password is stored as a PHP password_hash() hash.
+-- Santi Blinds — cPanel phpMyAdmin import script
+-- Prerequisite: Select your cPanel-created database first
+-- (e.g., cpaneluser_santiblinds) before importing.
 -- ============================================================
-
-CREATE DATABASE IF NOT EXISTS santiblinds
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE santiblinds;
 
 -- ------------------------------------------------------------
 -- OWNER ACCOUNT
@@ -24,7 +15,6 @@ CREATE TABLE IF NOT EXISTS owner_manager (
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- Owner/admin sign-ins and write actions are recorded here.
 CREATE TABLE IF NOT EXISTS admin_audit_log (
   audit_id    INT AUTO_INCREMENT PRIMARY KEY,
   owner_id    INT NULL,
@@ -36,7 +26,6 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
   FOREIGN KEY (owner_id) REFERENCES owner_manager(owner_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- Add the built-in owner only if this email does not already exist.
 INSERT INTO owner_manager (full_name, email, password_hash)
 SELECT 'Santi Blinds Owner',
        'owner@santiblinds.com',
@@ -47,7 +36,6 @@ WHERE NOT EXISTS (
 
 -- ------------------------------------------------------------
 -- CUSTOMERS
--- password_hash is NULL for guest/contact-form customers.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS customer (
   customer_id   INT AUTO_INCREMENT PRIMARY KEY,
@@ -61,10 +49,7 @@ CREATE TABLE IF NOT EXISTS customer (
 ) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------
--- QUALITY RECORDS (ISO 9001:2015 clause 7.5 documented information)
--- customer_activity : customer sign-ins and actions (admin "Customer Activity")
--- order_status_history : every order status change (8.5.2 traceability)
--- All three record tables are append-only; see triggers below.
+-- QUALITY RECORDS
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS customer_activity (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -84,7 +69,7 @@ CREATE TABLE IF NOT EXISTS order_status_history (
   order_id    INT NOT NULL,
   old_status  VARCHAR(30) NULL,
   new_status  VARCHAR(30) NOT NULL,
-  changed_by  VARCHAR(160) NOT NULL,   -- admin name, or 'Customer #id'
+  changed_by  VARCHAR(160) NOT NULL,
   changed_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_osh_order (order_id, changed_at)
 ) ENGINE=InnoDB;
@@ -132,7 +117,7 @@ CREATE TABLE IF NOT EXISTS quotation (
   status       VARCHAR(30) NOT NULL DEFAULT 'Active',
   valid_until  DATETIME NOT NULL,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  reviewed_by  INT NULL,            -- owner who reviewed and returned the quotation (ISO 9001 8.2.3)
+  reviewed_by  INT NULL,
   reviewed_at  DATETIME NULL,
   INDEX idx_quotation_customer (customer_id),
   FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
@@ -159,8 +144,6 @@ CREATE TABLE IF NOT EXISTS quotation_item (
 
 -- ------------------------------------------------------------
 -- ORDERS
--- One row per item; items from the same order share order_id.
--- quotation_id is NULL for orders not created from a quotation.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
   line_id      INT AUTO_INCREMENT PRIMARY KEY,
@@ -202,17 +185,17 @@ CREATE TABLE IF NOT EXISTS sale (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS inquiry (
-  enquiry_id  INT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT NOT NULL,
-  product_id  INT NULL,             -- NULL when the contact form names no specific product
-  message     TEXT NULL,
+  enquiry_id        INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id       INT NOT NULL,
+  product_id        INT NULL,
+  message           TEXT NULL,
   interest          VARCHAR(120) NULL,
-  preferred_contact VARCHAR(60)  NULL,
-  rooms             VARCHAR(60)  NULL,
-  budget            VARCHAR(60)  NULL,
+  preferred_contact VARCHAR(60) NULL,
+  rooms             VARCHAR(60) NULL,
+  budget            VARCHAR(60) NULL,
   consent           TINYINT(1) NOT NULL DEFAULT 1,
-  status      VARCHAR(30) NOT NULL DEFAULT 'New',
-  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status            VARCHAR(30) NOT NULL DEFAULT 'New',
+  created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_inquiry_status (status),
   FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
   FOREIGN KEY (product_id) REFERENCES product(product_id)
@@ -220,9 +203,6 @@ CREATE TABLE IF NOT EXISTS inquiry (
 
 -- ------------------------------------------------------------
 -- ORDER INVENTORY AUTOMATION
--- Active order lines reserve stock. Cancelled/canceled order lines
--- do not; stock is restored when an active line is canceled/deleted.
--- InnoDB runs trigger updates as part of the originating statement.
 -- ------------------------------------------------------------
 DROP TRIGGER IF EXISTS orders_inventory_before_insert;
 DROP TRIGGER IF EXISTS orders_inventory_before_update;
@@ -330,10 +310,7 @@ END$$
 DELIMITER ;
 
 -- ------------------------------------------------------------
--- RECORD PROTECTION (ISO 9001 7.5.3): audit, activity and status
--- history rows can be added but never edited or deleted.
--- (admin_audit_log.owner_id may still be nulled by the FK rule;
---  referential actions do not fire triggers.)
+-- RECORD PROTECTION
 -- ------------------------------------------------------------
 DROP TRIGGER IF EXISTS admin_audit_log_no_update;
 DROP TRIGGER IF EXISTS admin_audit_log_no_delete;
@@ -371,8 +348,6 @@ DELIMITER ;
 
 -- ------------------------------------------------------------
 -- STARTER DATA
--- Each seed is inserted only when the matching name is absent,
--- so re-importing does not duplicate the starter catalog.
 -- ------------------------------------------------------------
 INSERT INTO category (name)
 SELECT 'Fabric' WHERE NOT EXISTS (SELECT 1 FROM category WHERE name = 'Fabric');
@@ -429,4 +404,4 @@ FROM (
 ) AS seed
 WHERE NOT EXISTS (
   SELECT 1 FROM color c WHERE c.name = seed.name
-);
+);  
